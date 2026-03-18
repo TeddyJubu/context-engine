@@ -104,7 +104,7 @@ This auto-detects installed agents (Claude Code, Cursor, VS Code, Windsurf, Clau
 python3 connect.py --claude-code --cursor
 python3 connect.py --all
 python3 connect.py --status    # check what's connected
-python3 connect.py --remove    # disconnect all
+python3 connect.py --all --remove    # disconnect all
 ```
 
 <details>

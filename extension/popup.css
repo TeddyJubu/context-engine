@@ -518,10 +518,31 @@ input[type="text"].input-invalid {
   font-weight: 500;
 }
 
-.empty-hint {
-  font-size: 11px !important;
-  color: var(--text-muted) !important;
-  font-weight: 400 !important;
+.btn-empty-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-empty-create:hover {
+  background: rgba(99, 102, 241, .25);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, .2);
+}
+
+.btn-empty-create svg {
+  opacity: .8;
 }
 
 /* ===== Crawl Section ===== */

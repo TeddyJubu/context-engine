@@ -6,38 +6,156 @@
 </head>
 <body>
   <div class="header">
-    <h1>Context Engine</h1>
-    <span id="status-dot" class="dot dot-red"></span>
-  </div>
-
-  <div class="section">
-    <label for="collection-select">Collection</label>
-    <div class="row">
-      <select id="collection-select"></select>
-      <button id="new-collection-btn" title="New collection">+</button>
+    <div class="header-brand">
+      <svg class="header-logo" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.8-3.5 6l-.5.3V18a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2.7l-.5-.3C6.3 13.8 5 11.5 5 9a7 7 0 0 1 7-7z"/>
+        <circle cx="12" cy="9" r="2"/>
+        <path d="M10 22h4" opacity=".5"/>
+        <path d="M8 9a4 4 0 0 1 4-4" opacity=".4"/>
+      </svg>
+      <span class="header-title">Context Engine</span>
     </div>
-    <div id="new-collection-form" class="hidden">
-      <input id="new-collection-input" type="text" placeholder="collection-name">
-      <button id="create-collection-btn">Create</button>
+    <div id="status-badge" class="status-badge status-offline">
+      <span class="status-dot"></span>
+      <span id="status-label">Offline</span>
     </div>
   </div>
 
-  <div class="section">
-    <button id="add-page-btn" class="primary" disabled>Add this page</button>
-    <button id="add-selection-btn" disabled>Add selection</button>
-  </div>
-
-  <div class="section">
-    <label for="crawl-url">Crawl site</label>
-    <input id="crawl-url" type="text" placeholder="https://docs.example.com/">
-    <div class="row">
-      <input id="crawl-max" type="number" value="50" min="1" max="500" title="Max pages">
-      <button id="crawl-btn" disabled>Crawl</button>
+  <div id="offline-banner" class="offline-banner">
+    <div class="offline-banner-content">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 1l22 22"/>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+        <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <circle cx="12" cy="20" r="1"/>
+      </svg>
+      <div class="offline-banner-text">
+        <strong>Server offline</strong>
+        <span>Start with <code>.venv/bin/python3 server.py</code></span>
+      </div>
     </div>
-    <div id="crawl-status" class="hidden"></div>
+    <button id="retry-btn" class="btn-retry">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      Retry
+    </button>
   </div>
 
-  <div id="message" class="hidden"></div>
+  <div class="card" id="card-collection">
+    <label for="collection-select">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      Collection
+    </label>
+    <div id="empty-state" class="empty-state hidden">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".4">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        <line x1="12" y1="11" x2="12" y2="17"/>
+        <line x1="9" y1="14" x2="15" y2="14"/>
+      </svg>
+      <span>No collections yet</span>
+      <span class="empty-hint">Create one to get started</span>
+    </div>
+    <div id="collection-row" class="row">
+      <div class="select-wrap">
+        <select id="collection-select"></select>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <button id="new-collection-btn" class="btn-icon" title="New collection">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="new-collection-form" class="new-coll-form collapsed">
+      <div class="new-coll-inner">
+        <input id="new-collection-input" type="text" placeholder="collection-name" spellcheck="false">
+        <button id="create-collection-btn" class="btn-create">Create</button>
+      </div>
+      <div id="coll-input-error" class="input-error hidden">Name cannot be empty</div>
+    </div>
+  </div>
+
+  <div class="card" id="card-actions">
+    <label>
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Content
+    </label>
+    <button id="add-page-btn" class="btn-action btn-primary" disabled>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      <span class="btn-label">Add this page</span>
+      <span class="spinner hidden"></span>
+    </button>
+    <button id="add-selection-btn" class="btn-action btn-secondary" disabled>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 7V4h3"/>
+        <path d="M20 7V4h-3"/>
+        <path d="M4 17v3h3"/>
+        <path d="M20 17v3h-3"/>
+        <line x1="7" y1="10" x2="17" y2="10"/>
+        <line x1="7" y1="14" x2="17" y2="14"/>
+      </svg>
+      <span class="btn-label">Add selection</span>
+      <span class="spinner hidden"></span>
+    </button>
+  </div>
+
+  <div class="card" id="card-crawl">
+    <label for="crawl-url">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+      Crawl Site
+    </label>
+    <input id="crawl-url" type="text" placeholder="https://docs.example.com/" spellcheck="false">
+    <div id="crawl-url-error" class="input-error hidden">Enter a valid URL</div>
+    <div class="crawl-controls">
+      <div class="max-pages-wrap">
+        <span class="max-pages-label">Max</span>
+        <input id="crawl-max" type="number" value="50" min="1" max="500">
+      </div>
+      <button id="crawl-btn" class="btn-action btn-crawl" disabled>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span class="btn-label">Crawl</span>
+        <span class="spinner hidden"></span>
+      </button>
+    </div>
+    <div id="crawl-progress" class="crawl-progress hidden">
+      <div class="progress-header">
+        <span id="crawl-progress-text">Crawling...</span>
+        <span id="crawl-progress-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="crawl-progress-bar" class="progress-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="popup.js"></script>
 </body>

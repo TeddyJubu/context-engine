@@ -92,9 +92,27 @@ Verify: `curl http://localhost:11811/health`
 2. Enable **Developer mode**
 3. Click **Load unpacked** → select the `extension/` folder
 
-### 4. Configure the MCP server
+### 4. Connect to your coding agents
 
-**Claude Code** — add to `~/.claude.json`:
+```bash
+python3 connect.py
+```
+
+This auto-detects installed agents (Claude Code, Cursor, VS Code, Windsurf, Claude Desktop) and configures them. You can also connect specific agents:
+
+```bash
+python3 connect.py --claude-code --cursor
+python3 connect.py --all
+python3 connect.py --status    # check what's connected
+python3 connect.py --remove    # disconnect all
+```
+
+<details>
+<summary>Manual configuration</summary>
+
+If you prefer manual setup, add to your agent's MCP config:
+
+**Claude Code** (`~/.claude.json`):
 ```json
 {
   "mcpServers": {
@@ -106,7 +124,19 @@ Verify: `curl http://localhost:11811/health`
 }
 ```
 
-**VS Code** (Cursor, Copilot, Continue.dev) — add to `.vscode/mcp.json`:
+**Cursor** (`~/.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "context-engine": {
+      "command": "/path/to/context-engine/.venv/bin/python3",
+      "args": ["/path/to/context-engine/mcp_server.py"]
+    }
+  }
+}
+```
+
+**VS Code / Copilot** (`~/.vscode/mcp.json`):
 ```json
 {
   "servers": {
@@ -117,6 +147,20 @@ Verify: `curl http://localhost:11811/health`
   }
 }
 ```
+
+**Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "context-engine": {
+      "command": "/path/to/context-engine/.venv/bin/python3",
+      "args": ["/path/to/context-engine/mcp_server.py"]
+    }
+  }
+}
+```
+
+</details>
 
 ---
 

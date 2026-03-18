@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <h1>Context Engine</h1>
+    <span id="status-dot" class="dot dot-red"></span>
+  </div>
+
+  <div class="section">
+    <label for="collection-select">Collection</label>
+    <div class="row">
+      <select id="collection-select"></select>
+      <button id="new-collection-btn" title="New collection">+</button>
+    </div>
+    <div id="new-collection-form" class="hidden">
+      <input id="new-collection-input" type="text" placeholder="collection-name">
+      <button id="create-collection-btn">Create</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <button id="add-page-btn" class="primary" disabled>Add this page</button>
+    <button id="add-selection-btn" disabled>Add selection</button>
+  </div>
+
+  <div class="section">
+    <label for="crawl-url">Crawl site</label>
+    <input id="crawl-url" type="text" placeholder="https://docs.example.com/">
+    <div class="row">
+      <input id="crawl-max" type="number" value="50" min="1" max="500" title="Max pages">
+      <button id="crawl-btn" disabled>Crawl</button>
+    </div>
+    <div id="crawl-status" class="hidden"></div>
+  </div>
+
+  <div id="message" class="hidden"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

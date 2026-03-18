@@ -28,6 +28,7 @@ const toastContainer = document.getElementById("toast-container");
 const cardCollection = document.getElementById("card-collection");
 const cardActions = document.getElementById("card-actions");
 const cardCrawl = document.getElementById("card-crawl");
+const emptyCreateBtn = document.getElementById("empty-create-btn");
 
 let serverOnline = false;
 
@@ -135,10 +136,10 @@ async function loadCollections() {
     if (data.length === 0) {
       collSelect.innerHTML = '<option value="default">default</option>';
       emptyState.classList.remove("hidden");
-      collectionRow.classList.add("hidden");
+      collectionRow.style.display = "none";
     } else {
       emptyState.classList.add("hidden");
-      collectionRow.classList.remove("hidden");
+      collectionRow.style.display = "";
       for (const c of data) {
         const opt = document.createElement("option");
         opt.value = c.name;
@@ -161,13 +162,21 @@ collSelect.addEventListener("change", () => {
 
 let collFormOpen = false;
 
+function openCollForm() {
+  collFormOpen = true;
+  newCollForm.classList.remove("collapsed");
+  newCollForm.classList.add("expanded");
+  newCollBtn.classList.add("active");
+  newCollInput.focus();
+}
+
+emptyCreateBtn.addEventListener("click", () => {
+  if (!collFormOpen) openCollForm();
+});
+
 newCollBtn.addEventListener("click", () => {
-  collFormOpen = !collFormOpen;
-  if (collFormOpen) {
-    newCollForm.classList.remove("collapsed");
-    newCollForm.classList.add("expanded");
-    newCollBtn.classList.add("active");
-    newCollInput.focus();
+  if (!collFormOpen) {
+    openCollForm();
   } else {
     closeCollForm();
   }

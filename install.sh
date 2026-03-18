@@ -57,3 +57,13 @@ echo "  {\"servers\": {\"context-engine\": {\"command\": \"$VENV_DIR/bin/python3
 echo ""
 echo "Test:"
 echo "  curl http://localhost:11811/health"
+
+echo ""
+echo "=== Connect to Coding Agents ==="
+echo ""
+read -p "Auto-configure MCP for your coding agents? [Y/n] " answer
+if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
+    "$VENV_DIR/bin/python3" "$SCRIPT_DIR/connect.py"
+else
+    echo "You can run this later: python3 connect.py"
+fi

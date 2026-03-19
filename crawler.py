@@ -4,8 +4,10 @@ Context Engine — Async BFS web crawler module
 """
 
 import asyncio
+import json
 import logging
 import re
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -15,6 +17,9 @@ log = logging.getLogger("context-engine.crawler")
 
 # Tags to remove before text extraction
 STRIP_TAGS = {"script", "style", "nav", "footer", "header", "aside", "noscript", "svg", "iframe"}
+
+CHECKPOINT_SAVE_INTERVAL = 10  # Save checkpoint every N pages
+
 
 def extract_text(html: str) -> str:
     """Extract clean text from HTML, preferring main/article content."""
@@ -33,6 +38,7 @@ def extract_text(html: str) -> str:
     # Collapse multiple blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
 
 def extract_links(html: str, base_url: str, domain: str, path_prefix: str | None) -> list[str]:
     """Extract same-domain links, optionally filtered by path prefix."""
@@ -58,16 +64,40 @@ def extract_links(html: str, base_url: str, domain: str, path_prefix: str | None
         links.append(clean)
     return links
 
+
+def save_checkpoint(path: Path, visited: set, queue: list) -> None:
+    """Persist crawl state to disk so it can be resumed later."""
+    data = {"visited": list(visited), "queue": queue}
+    path.write_text(json.dumps(data))
+
+
+def load_checkpoint(path: Path) -> tuple[set, list]:
+    """Load crawl state from disk. Returns (visited, queue) or (empty set, empty list)."""
+    if not path.exists():
+        return set(), []
+    try:
+        data = json.loads(path.read_text())
+        return set(data.get("visited", [])), data.get("queue", [])
+    except Exception as e:
+        log.warning("Failed to load checkpoint %s: %s — starting fresh", path, e)
+        return set(), []
+
+
 async def crawl_site(
     url: str,
-    collection,
+    coll_name: str,
     task_state: dict,
     max_pages: int = 200,
     path_prefix: str | None = None,
     embed_fn=None,
     add_fn=None,
+    checkpoint_path: Path | None = None,
 ):
-    """BFS crawl a site, chunking and embedding each page into a collection."""
+    """BFS crawl a site, chunking and embedding each page into a collection.
+
+    If checkpoint_path is provided, crawl state is saved periodically and can
+    be resumed across server restarts.
+    """
     parsed = urlparse(url)
     domain = parsed.netloc
     if path_prefix is None:
@@ -75,9 +105,26 @@ async def crawl_site(
         path_prefix = "/".join(parsed.path.rstrip("/").split("/")[:-1]) + "/" if "/" in parsed.path.rstrip("/") else "/"
 
     sem = asyncio.Semaphore(5)
-    visited = set()
-    queue = [url.rstrip("/")]
-    pages_crawled = 0
+
+    # Load checkpoint if it exists
+    if checkpoint_path:
+        visited, queue = load_checkpoint(checkpoint_path)
+        if visited:
+            pages_crawled = len(visited)
+            log.info(
+                "Resuming crawl from checkpoint: %d already visited, %d queued",
+                pages_crawled, len(queue),
+            )
+            task_state["resumed"] = True
+            task_state["pages_crawled"] = pages_crawled
+        else:
+            visited = set()
+            queue = [url.rstrip("/")]
+            pages_crawled = 0
+    else:
+        visited = set()
+        queue = [url.rstrip("/")]
+        pages_crawled = 0
 
     async with httpx.AsyncClient(
         timeout=30,
@@ -111,7 +158,7 @@ async def crawl_site(
             from server import chunk_text
             chunks = chunk_text(text, size=400)
             for chunk in chunks:
-                add_fn(chunk, collection, source=current_url)
+                add_fn(chunk, coll_name, source=current_url)
 
             pages_crawled += 1
             task_state["pages_crawled"] = pages_crawled
@@ -123,14 +170,26 @@ async def crawl_site(
                 if link not in visited:
                     queue.append(link)
 
+            # Save checkpoint periodically
+            if checkpoint_path and pages_crawled % CHECKPOINT_SAVE_INTERVAL == 0:
+                save_checkpoint(checkpoint_path, visited, queue)
+                log.debug("Checkpoint saved at %d pages", pages_crawled)
+
             # Polite delay
             await asyncio.sleep(0.5)
 
     # Optimize after crawl
     try:
-        collection.optimize()
+        from server import get_collection
+        coll = get_collection(coll_name)
+        coll.optimize()
     except Exception:
         pass
+
+    # Delete checkpoint on successful completion
+    if checkpoint_path and checkpoint_path.exists():
+        checkpoint_path.unlink()
+        log.info("Checkpoint cleared for completed crawl")
 
     task_state["pages_total"] = pages_crawled
     log.info("Crawl complete: %d pages indexed", pages_crawled)

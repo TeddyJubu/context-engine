@@ -1,3 +1,11 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Mac app build artifacts
+dist/
+build/
+*.spec.bak
+
+# Brainstorm visual companion sessions
+.superpowers/

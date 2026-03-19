@@ -19,13 +19,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import sys as _sys
+import sys
 
-def get_model_cache_dir() -> "str | None":
+def get_model_cache_dir() -> Optional[str]:
     """Return bundled model cache path when running inside a PyInstaller .app, else None."""
-    if hasattr(_sys, "_MEIPASS"):
-        import os as _os
-        return _os.path.join(_sys._MEIPASS, "sentence_transformers_cache")
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "sentence_transformers_cache")
     return None
 
 # ── Config ────────────────────────────────────────────────────────────────────

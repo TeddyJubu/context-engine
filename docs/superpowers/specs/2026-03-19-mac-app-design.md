@@ -49,18 +49,38 @@ The app is a single Python process with two concurrent layers:
       Browser extension + mcp_server.py
 ```
 
-**Startup sequence:**
-1. `app.py` is the PyInstaller entry point
-2. It starts `server.py`'s FastAPI app in a background thread via `uvicorn.run()`
-3. It waits for the server to be ready (polls `/health`)
-4. It opens a pywebview window loading bundled `ui/index.html`
-5. The UI fetches data from `http://localhost:11811` directly
+**Port is a compile-time constant (11811).** The UI hardcodes `http://localhost:11811`. This matches the existing extension and MCP. If port-binding fails, the app shows an error and exits rather than retrying on a different port.
 
-**Shutdown sequence:**
-1. User closes the window or quits via Dock
-2. pywebview triggers `on_closed` callback
-3. `app.py` signals the uvicorn thread to stop
-4. Process exits cleanly
+### Startup Sequence
+
+```
+app.py
+  │
+  ├─ 1. Create uvicorn.Server(config) and store as global
+  ├─ 2. Start server.serve() in a daemon thread
+  ├─ 3. Poll GET /health every 2s (see: wait_for_server)
+  │       ├─ success → continue
+  │       └─ timeout (90s) → open error window and exit
+  ├─ 4. pywebview.create_window("Context Engine", url="ui/index.html", js_api=Api())
+  └─ 5. pywebview.start(on_closed=shutdown)   ← blocks until window closes
+```
+
+**Why 90 seconds:** On first launch, `sentence_transformers` downloads and caches the model. Subsequent launches are fast (~2–5s). The timeout must accommodate the slow first-run case.
+
+**Polling interval:** 2 seconds. If the server thread raises an exception before the poll succeeds, the exception is captured via `threading.excepthook` or by checking a shared `server_error: Optional[Exception]` variable each poll iteration. If `server_error` is set, the poll loop exits immediately with that error rather than waiting for timeout.
+
+### Shutdown Sequence
+
+```
+User closes window
+  │
+  └─ on_closed callback fires
+       ├─ uvicorn_server.should_exit = True   ← signals uvicorn's internal loop
+       ├─ server_thread.join(timeout=5)
+       └─ sys.exit(0)
+```
+
+`uvicorn.Server` exposes `should_exit: bool`. Setting it to `True` causes uvicorn's `serve()` coroutine to exit cleanly on its next loop tick. This is the correct mechanism — do not use `thread.daemon` alone or `os.kill`.
 
 ---
 
@@ -69,75 +89,258 @@ The app is a single Python process with two concurrent layers:
 ### New Files
 
 #### `app.py`
-Entry point for the Mac app. Responsibilities:
-- Start the FastAPI server in a daemon thread using `uvicorn.run()`
-- Poll `GET /health` until the server responds (max 30s, then show error)
-- Open the pywebview window (`title="Context Engine"`, fixed size ~780×520, no resizing needed)
-- Handle window close to shut down the server thread
-- Expose an `Api` class to pywebview's JS bridge for the Open at Login toggle
 
 ```python
-# Skeleton
-class Api:
-    def set_open_at_login(self, enabled: bool) -> bool: ...
-    def get_open_at_login(self) -> bool: ...
+import threading, time, sys, httpx, webview
+from server import app as fastapi_app   # imports the FastAPI object
+import uvicorn
 
-def start_server_thread(): ...
-def wait_for_server(timeout=30): ...
-def main(): ...
+SERVER_PORT = 11811
+SERVER_URL  = f"http://127.0.0.1:{SERVER_PORT}"
+
+uvicorn_server: uvicorn.Server = None
+server_error: Exception = None
+
+class Api:
+    def set_open_at_login(self, enabled: bool) -> dict: ...
+    def get_open_at_login(self) -> dict: ...
+
+def server_thread_target():
+    global uvicorn_server, server_error
+    config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=SERVER_PORT, log_level="warning")
+    uvicorn_server = uvicorn.Server(config)
+    try:
+        uvicorn_server.run()          # blocks until should_exit=True
+    except Exception as e:
+        server_error = e
+
+def wait_for_server(timeout=90, interval=2) -> bool:
+    """Poll /health. Returns True on success, False on timeout or server error."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if server_error:
+            return False
+        try:
+            r = httpx.get(f"{SERVER_URL}/health", timeout=2)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    return False
+
+def shutdown():
+    if uvicorn_server:
+        uvicorn_server.should_exit = True
+
+def main():
+    t = threading.Thread(target=server_thread_target, daemon=True)
+    t.start()
+
+    if not wait_for_server():
+        err = str(server_error) if server_error else "Server did not respond within 90 seconds."
+        # Open an error window using load_html (no server needed)
+        w = webview.create_window("Context Engine — Error", html=error_html(err))
+        webview.start()
+        sys.exit(1)
+
+    api = Api()
+    webview.create_window(
+        "Context Engine",
+        url=resource_path("ui/index.html"),  # resolves correctly inside .app bundle
+        js_api=api,
+        width=780, height=520,
+        resizable=False,
+    )
+    webview.start(on_closed=shutdown)
+
+def resource_path(relative: str) -> str:
+    """Resolve path to bundled resource. Works both in dev and inside PyInstaller .app."""
+    import os
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
+
+def error_html(message: str) -> str:
+    return f"""<html><body style="background:#0f0f1a;color:#ff5f57;font-family:-apple-system,sans-serif;
+    display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <div style="text-align:center"><h2>Could not start server</h2><pre style="color:#aaa;font-size:12px">{message}</pre></div>
+    </body></html>"""
+
+if __name__ == "__main__":
+    main()
 ```
 
-#### `ui/index.html`
-Single-page management UI. Dark theme matching the browser extension (`#0f0f1a` background, `#4a9eff` accent). Three-tab sidebar layout:
+**Key note on `resource_path`:** PyInstaller extracts bundled files to `sys._MEIPASS` at runtime. All file references in `app.py` must go through `resource_path()`. The `ui/` folder is referenced as `resource_path("ui/index.html")`.
 
-- **Overview tab** (default): Server status dot (green/red), port number, uptime, total collections count, total document count
-- **Collections tab**: Scrollable list of collections with name + doc count, "New Collection" button (prompts for name, calls `POST /collections`), delete button per row (calls `DELETE /collections/{name}` with confirmation)
-- **Settings tab**: "Open at Login" toggle (calls `Api.set_open_at_login()`), embedding model name (read-only, from `GET /health`), data directory path (read-only)
+#### `ui/index.html`
+
+Single-page app. Three-tab sidebar. Dark theme matching the extension.
+
+Structure:
+```html
+<body>
+  <div id="sidebar">   <!-- Overview | Collections | Settings nav items -->
+  <div id="content">   <!-- Tab panels, one shown at a time -->
+</body>
+```
+
+On DOMContentLoaded, `app.js` is loaded. The pywebview bridge is **not** available immediately — `app.js` must wait for the `pywebviewready` event before calling any `window.pywebview.api.*` methods:
+
+```js
+window.addEventListener('pywebviewready', () => {
+    // safe to call window.pywebview.api here
+    initSettings();
+});
+```
+
+All other API calls (fetch to localhost:11811) are safe to make before `pywebviewready`.
+
+**Overview tab content:** Status dot (green = server responding, red = not), port number, uptime (computed from a start timestamp stored in `sessionStorage`), collections count, document count. Populated by `GET /health` and `GET /collections`.
+
+**Collections tab content:** Scrollable list rendered from `GET /collections`. Each row: collection name, doc count, delete button. Delete button shows a `confirm()` dialog then calls `DELETE /collections/{name}`. "New Collection" button shows a `prompt()` for the name then calls `POST /collections`.
+
+**Settings tab content:** "Open at Login" toggle (a styled checkbox). On load, calls `window.pywebview.api.get_open_at_login()`. On change, calls `window.pywebview.api.set_open_at_login(checked)`. Model name and data directory path from `GET /health` (read-only text).
 
 #### `ui/style.css`
-Dark theme stylesheet. Key design tokens:
-- Background: `#0f0f1a` (page), `#16213e` (panels), `#12122a` (inputs/rows)
-- Accent: `#4a9eff`
-- Success: `#22c55e`
-- Danger: `#ff5f57`
-- Font: `-apple-system, BlinkMacSystemFont, sans-serif`
-- Border radius: `8px` for panels, `5px` for buttons/inputs
+
+Design tokens:
+```css
+:root {
+  --bg-page:    #0f0f1a;
+  --bg-panel:   #16213e;
+  --bg-input:   #12122a;
+  --accent:     #4a9eff;
+  --success:    #22c55e;
+  --danger:     #ff5f57;
+  --text:       #e0e0ff;
+  --text-muted: #6666aa;
+  --radius-lg:  8px;
+  --radius-sm:  5px;
+  --font:       -apple-system, BlinkMacSystemFont, sans-serif;
+}
+```
 
 #### `ui/app.js`
-Vanilla JS (no framework). Responsibilities:
-- On load: fetch `/collections` and `/health`, render Overview tab
-- Tab switching via sidebar clicks
-- Collections CRUD: fetch list, render rows, wire up New + Delete buttons
-- Settings: call `window.pywebview.api.get_open_at_login()` on load, toggle calls `set_open_at_login()`
-- Poll `/health` every 5s to keep status dot current
+
+Vanilla JS, no build step. Key responsibilities:
+
+```js
+// Tab switching
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => switchTab(item.dataset.tab));
+});
+
+// Health polling — every 5s, update status dot
+setInterval(pollHealth, 5000);
+
+// pywebview bridge — only for Settings tab
+window.addEventListener('pywebviewready', initSettings);
+```
+
+The `start_ts` for uptime is set to `Date.now()` on first successful `/health` response and stored in `sessionStorage`.
 
 #### `ContextEngine.spec`
-PyInstaller spec file. Key settings:
-- `--windowed` (no terminal window)
-- `--name "Context Engine"`
-- `datas`: include `ui/` folder, bundled sentence-transformers model from cache
-- `hiddenimports`: fastapi, uvicorn, zvec, sentence_transformers, pywebview
+
+```python
+# ContextEngine.spec
+import os
+from sentence_transformers import SentenceTransformer
+
+# Locate the cached model so PyInstaller can bundle it
+MODEL_NAME = "all-MiniLM-L6-v2"
+model_instance = SentenceTransformer(MODEL_NAME)  # triggers download if needed
+model_cache_path = model_instance._model_card_data.base_model   # resolve cache dir
+
+# The actual cache dir is in ~/.cache/huggingface/hub/
+# Use sentence_transformers.util to find it:
+from sentence_transformers import util as st_util
+import torch
+model_dir = os.path.join(
+    os.path.expanduser("~"), ".cache", "huggingface", "hub",
+    f"models--sentence-transformers--{MODEL_NAME}"
+)
+
+a = Analysis(
+    ['app.py'],
+    pathex=[],
+    binaries=[],
+    datas=[
+        ('ui', 'ui'),                    # (src, dest_inside_bundle)
+        (model_dir, f'sentence_transformers_cache/models--sentence-transformers--{MODEL_NAME}'),
+    ],
+    hiddenimports=[
+        'fastapi', 'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
+        'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
+        'sentence_transformers', 'torch', 'transformers',
+        'zvec', 'pywebview', 'pywebview.platforms.cocoa',
+        'httpx',
+    ],
+    hookspath=[],
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='ContextEngine', windowed=True)
+coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, name='ContextEngine')
+app = BUNDLE(coll, name='Context Engine.app', icon=None, bundle_identifier='com.contextengine.app')
+```
+
+**Runtime model path resolution in `server.py`:** Add a helper that checks `sys._MEIPASS` first:
+
+```python
+# In server.py, replace the MODEL_NAME direct usage with:
+def get_model_cache_dir():
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "sentence_transformers_cache")
+    return None  # use default HuggingFace cache
+
+# Pass to SentenceTransformer:
+embedder = SentenceTransformer(MODEL_NAME, cache_folder=get_model_cache_dir())
+```
 
 #### `build.sh`
+
 ```bash
 #!/bin/bash
 set -e
+echo "Installing build deps..."
 pip install pyinstaller pywebview
-pyinstaller ContextEngine.spec
-echo "Built: dist/Context Engine.app"
+
+echo "Pre-downloading model (required for bundling)..."
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
+echo "Building .app..."
+pyinstaller ContextEngine.spec --noconfirm
+
+echo "Done: dist/Context Engine.app"
+echo "Note: App is unsigned. Users must right-click → Open on first launch."
 ```
 
 ### Modified Files
 
 #### `server.py`
-Current `if __name__ == "__main__": uvicorn.run(...)` block stays. No functional changes needed — `app.py` imports and runs the `app` object directly via `uvicorn.run("server:app", ...)` in a thread.
 
-One addition: expose a `shutdown_event` threading.Event so `app.py` can signal graceful shutdown.
+Two additions only:
+
+1. Import `sys` and add `get_model_cache_dir()` helper (see above), use it when instantiating `SentenceTransformer`.
+2. The `if __name__ == "__main__"` block is unchanged — `server.py` still works standalone for developers.
+
+No other changes. The `app` FastAPI object at module level is imported directly by `app.py`.
 
 #### `install.sh`
-Add a note directing users to the `.app` bundle as the recommended path, with the existing `pip install` flow kept as the developer/CLI path.
+
+Add a section above the existing pip-based instructions:
+
+```
+## Quick Install (recommended)
+Download Context Engine.app, drag to /Applications, launch.
+Enable "Open at Login" in the Settings tab.
+
+## Developer / CLI Install
+...existing instructions...
+```
 
 #### `.gitignore`
+
 Add:
 ```
 dist/
@@ -147,38 +350,51 @@ build/
 ```
 
 ### Unchanged Files
-- `mcp_server.py` — no changes
-- `extension/` — no changes
-- `crawler.py` — no changes
-- `connect.py` — no changes
+
+`mcp_server.py`, `extension/`, `crawler.py`, `connect.py` — no changes.
 
 ---
 
-## Data Flow
+## Open at Login — Implementation Detail
 
-### Startup
-```
-app.py
-  → thread: uvicorn.run("server:app", port=11811)
-  → poll GET /health until 200
-  → pywebview.create_window("Context Engine", "ui/index.html", js_api=Api())
-  → pywebview.start()
+This is a macOS LaunchAgent. The `Api` class in `app.py` implements it as follows:
+
+```python
+import subprocess, plistlib
+from pathlib import Path
+
+PLIST_PATH = Path.home() / "Library/LaunchAgents/com.contextengine.app.plist"
+APP_EXECUTABLE = Path(sys.executable)  # inside .app bundle when running packaged
+
+def _plist_contents() -> dict:
+    return {
+        "Label": "com.contextengine.app",
+        "ProgramArguments": [str(APP_EXECUTABLE)],
+        "RunAtLoad": True,
+        "KeepAlive": False,
+    }
+
+class Api:
+    def set_open_at_login(self, enabled: bool) -> dict:
+        if enabled:
+            PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(PLIST_PATH, "wb") as f:
+                plistlib.dump(_plist_contents(), f)
+            subprocess.run(["launchctl", "bootstrap",
+                            f"gui/{os.getuid()}", str(PLIST_PATH)], check=False)
+        else:
+            subprocess.run(["launchctl", "bootout",
+                            f"gui/{os.getuid()}", str(PLIST_PATH)], check=False)
+            PLIST_PATH.unlink(missing_ok=True)
+        return {"ok": True}
+
+    def get_open_at_login(self) -> dict:
+        return {"enabled": PLIST_PATH.exists()}
 ```
 
-### UI → API
-All data operations go through the existing REST API:
-```
-ui/app.js  →  fetch("http://localhost:11811/...")  →  server.py handlers
-```
+**`launchctl bootstrap/bootout` vs `load/unload`:** macOS 10.15+ (Catalina and later) deprecated `launchctl load/unload`. Use `bootstrap gui/<uid> <plist>` and `bootout gui/<uid> <plist>` instead.
 
-### Open at Login
-```
-Settings toggle  →  window.pywebview.api.set_open_at_login(true)
-  → app.py writes ~/Library/LaunchAgents/com.contextengine.app.plist
-    pointing to the .app bundle's executable
-  → launchctl load <plist>
-```
-Turning it off: `launchctl unload` + delete the plist.
+**`ProgramArguments`:** Must point to the executable inside the `.app` bundle. When running via PyInstaller, `sys.executable` is the bundled binary. This is correct for the LaunchAgent.
 
 ---
 
@@ -186,35 +402,36 @@ Turning it off: `launchctl unload` + delete the plist.
 
 | Scenario | Behavior |
 |---|---|
-| Server fails to start in 30s | pywebview shows inline error page with log output |
-| Port 11811 already in use | Error message in window: "Another instance may be running" |
-| Collection delete fails | Alert in UI, list refreshes to current state |
-| Server crashes mid-session | Status dot turns red; UI shows "Reconnecting…"; polls until healthy |
+| Server fails to respond within 90s | `error_html()` is passed to `webview.create_window(html=...)` — no server needed to show this |
+| Port 11811 already in use | `server_error` is set immediately by uvicorn; polling loop catches it and shows error window |
+| Collection delete fails (HTTP error) | `fetch()` catches non-2xx; shows `alert()` with the error message; re-fetches collection list |
+| Server crashes mid-session | Next `/health` poll fails; status dot turns red; UI shows "Reconnecting…" banner; continues polling |
+| Model download fails at first launch | uvicorn/sentence_transformers raises before `/health` responds; caught as `server_error`; shown in error window |
 
 ---
 
 ## Build & Distribution
 
-```
-# Developer build
+```bash
+# One-time developer build
 bash build.sh
 # → dist/Context Engine.app
 
 # User install
 # 1. Download Context Engine.app
 # 2. Drag to /Applications
-# 3. Double-click to launch
-# 4. Enable "Open at Login" in Settings tab
+# 3. Right-click → Open (first launch only, bypasses Gatekeeper for unsigned app)
+# 4. Enable "Open at Login" in the Settings tab
 ```
 
-PyInstaller bundles Python runtime, all pip dependencies, the sentence-transformers model, and the `ui/` folder. The resulting `.app` is self-contained — no Python installation required on the user's machine.
+**Approximate bundle size:** 400–600 MB (sentence-transformers model + PyTorch dominate).
 
-**Approximate bundle size:** 400–600 MB (dominated by the sentence-transformers model and PyTorch).
+**Code-signing:** Deferred. Not required for local personal use. For distribution, add `codesign` + `notarytool` steps to `build.sh` in a future iteration.
 
 ---
 
-## Open Questions
+## Open Questions (resolved)
 
-- Should the app support running alongside a separately launched `server.py` (e.g., if a developer is already running it)? Current design: app always starts its own server; if port is in use it shows an error.
-- Should the window remember its last position? (Nice to have, not in v1.)
-- Code-signing: deferred. Users will need to right-click → Open to bypass Gatekeeper for unsigned builds.
+- **Port conflicts:** App shows an error and exits. It does not attempt to use an alternate port.
+- **Window position memory:** Not in v1. Window always opens at default position.
+- **Running alongside a dev server.py:** Not supported. If port is in use, error is shown.

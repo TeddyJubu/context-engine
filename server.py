@@ -19,6 +19,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import sys as _sys
+
+def get_model_cache_dir() -> "str | None":
+    """Return bundled model cache path when running inside a PyInstaller .app, else None."""
+    if hasattr(_sys, "_MEIPASS"):
+        import os as _os
+        return _os.path.join(_sys._MEIPASS, "sentence_transformers_cache")
+    return None
+
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_DIR    = Path(os.environ.get("CONTEXT_ENGINE_DIR", Path.home() / ".context-engine"))
 COLL_DIR    = DATA_DIR / "collections"
@@ -165,7 +174,7 @@ async def lifespan(app: FastAPI):
 
     log.info("Loading embedding model: %s", MODEL_NAME)
     from sentence_transformers import SentenceTransformer
-    embedder = SentenceTransformer(MODEL_NAME)
+    embedder = SentenceTransformer(MODEL_NAME, cache_folder=get_model_cache_dir())
     log.info("Embedding model loaded.")
 
     # Pre-open existing collections

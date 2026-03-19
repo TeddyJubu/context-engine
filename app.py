@@ -13,6 +13,7 @@ SERVER_URL = f"http://127.0.0.1:{SERVER_PORT}"
 
 # Shared state between main thread and server thread
 uvicorn_server = None
+server_thread: Optional[threading.Thread] = None
 server_error: Optional[Exception] = None
 
 
@@ -77,15 +78,31 @@ def _server_thread_target():
         server_error = e
 
 
+SHUTDOWN_TIMEOUT = 15  # seconds to wait for graceful teardown
+
+
 def shutdown():
-    """Called by pywebview's on_closed callback."""
+    """Called by pywebview's on_closed callback.
+
+    Signals uvicorn to stop and waits for the server thread to finish so that
+    FastAPI's lifespan teardown (collection optimization/flush) runs to
+    completion before the process exits.
+    """
     if uvicorn_server:
         uvicorn_server.should_exit = True
+    if server_thread and server_thread.is_alive():
+        server_thread.join(timeout=SHUTDOWN_TIMEOUT)
+        if server_thread.is_alive():
+            # Lifespan teardown is taking too long; force an immediate exit.
+            uvicorn_server.force_exit = True
+            server_thread.join(timeout=3)
 
 
 def main():
-    t = threading.Thread(target=_server_thread_target, daemon=True)
-    t.start()
+    global server_thread
+    # Non-daemon so the interpreter waits for lifespan teardown on exit.
+    server_thread = threading.Thread(target=_server_thread_target, daemon=False)
+    server_thread.start()
 
     if not wait_for_server():
         err = str(server_error) if server_error else "Server did not respond within 90 seconds."

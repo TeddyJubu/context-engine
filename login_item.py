@@ -28,14 +28,21 @@ class Api:
             PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(PLIST_PATH, "wb") as f:
                 plistlib.dump(_plist_contents(), f)
-            subprocess.run(
+            res = subprocess.run(
                 ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(PLIST_PATH)],
-                check=False,
+                capture_output=True,
+                text=True,
             )
+            if res.returncode != 0:
+                PLIST_PATH.unlink(missing_ok=True)
+                raise RuntimeError(res.stderr or res.stdout or "launchctl bootstrap failed")
         else:
-            subprocess.run(
+            res = subprocess.run(
                 ["launchctl", "bootout", f"gui/{os.getuid()}", str(PLIST_PATH)],
-                check=False,
+                capture_output=True,
+                text=True,
             )
             PLIST_PATH.unlink(missing_ok=True)
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr or res.stdout or "launchctl bootout failed")
         return {"ok": True}

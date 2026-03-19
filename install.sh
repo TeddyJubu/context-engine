@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ── Quick Install (recommended for end users) ─────────────────────────────────
 # 1. Download Context Engine.app from the releases page
 # 2. Drag to /Applications
@@ -8,7 +9,6 @@
 # No Python installation required.
 #
 # ── Developer / CLI Install ───────────────────────────────────────────────────
-#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

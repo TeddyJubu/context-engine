@@ -1,5 +1,5 @@
 # ContextEngine.spec
-import os
+import shutil
 from pathlib import Path
 
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -13,6 +13,15 @@ if not model_dir.exists():
         "SentenceTransformer('" + MODEL_NAME + "')\""
     )
 
+# HuggingFace Hub stores model files as symlinks (snapshots/ -> blobs/).
+# PyInstaller cannot copy symlinked trees, so we resolve them into a staging
+# directory of real files before bundling.
+staging_dir = Path("build/model_staging/models--sentence-transformers--" + MODEL_NAME)
+if staging_dir.exists():
+    shutil.rmtree(staging_dir)
+staging_dir.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(str(model_dir), str(staging_dir), symlinks=False)
+
 block_cipher = None
 
 a = Analysis(
@@ -20,11 +29,11 @@ a = Analysis(
     pathex=[str(Path(".").resolve())],
     binaries=[],
     datas=[
-        ("ui",            "ui"),
-        (str(model_dir),  "sentence_transformers_cache/models--sentence-transformers--" + MODEL_NAME),
-        ("server.py",     "."),
-        ("login_item.py", "."),
-        ("crawler.py",    "."),
+        ("ui",               "ui"),
+        (str(staging_dir),   "sentence_transformers_cache/models--sentence-transformers--" + MODEL_NAME),
+        ("server.py",        "."),
+        ("login_item.py",    "."),
+        ("crawler.py",       "."),
     ],
     hiddenimports=[
         "fastapi", "fastapi.routing", "fastapi.middleware.cors",

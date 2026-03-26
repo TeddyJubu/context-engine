@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Context Engine</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <nav id="sidebar">
+    <div class="app-title">Context Engine</div>
+    <div class="nav-item active" data-tab="overview">Overview</div>
+    <div class="nav-item"       data-tab="collections">Collections</div>
+    <div class="nav-item"       data-tab="settings">Settings</div>
+  </nav>
+
+  <main id="content">
+
+    <!-- Overview -->
+    <div class="tab-panel active" id="tab-overview">
+      <h2>Overview</h2>
+      <div class="status-row">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+        <span id="uptime-text" style="margin-left:auto;color:var(--text-muted);font-size:11px;"></span>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-collections">-</div>
+          <div class="stat-label">Collections</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-docs">-</div>
+          <div class="stat-label">Documents</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-port">11811</div>
+          <div class="stat-label">Port</div>
+        </div>
+      </div>
+      <div class="banner" id="reconnect-banner">Server not responding - reconnecting...</div>
+    </div>
+
+    <!-- Collections -->
+    <div class="tab-panel" id="tab-collections">
+      <h2>Collections</h2>
+      <div class="section-header">
+        <span id="coll-subtitle" style="color:var(--text-muted);font-size:12px;"></span>
+        <button class="btn btn-primary" id="new-coll-btn">+ New</button>
+      </div>
+      <div class="coll-list" id="coll-list"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="tab-panel" id="tab-settings">
+      <h2>Settings</h2>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Open at Login</div>
+          <div class="setting-value">Launch automatically when you log in</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="login-toggle">
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Embedding Model</div>
+          <div class="setting-value" id="model-name">-</div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Data Directory</div>
+          <div class="setting-value">~/.context-engine</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

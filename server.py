@@ -36,6 +36,14 @@ from context_engine_config import (
     SERVER_PORT,
 )
 
+import sys
+
+def get_model_cache_dir() -> Optional[str]:
+    """Return bundled model cache path when running inside a PyInstaller .app, else None."""
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "sentence_transformers_cache")
+    return None
+
 # ── Config ────────────────────────────────────────────────────────────────────
 DEFAULT_K = DEFAULT_TOP_K
 COLLECTION_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -442,7 +450,7 @@ async def lifespan(app: FastAPI):
 
     log.info("Loading embedding model: %s", MODEL_NAME)
     from sentence_transformers import SentenceTransformer
-    embedder = SentenceTransformer(MODEL_NAME)
+    embedder = SentenceTransformer(MODEL_NAME, cache_folder=get_model_cache_dir())
     log.info("Embedding model loaded.")
 
     # Verify model output dimension matches config

@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ── Quick Install (recommended for end users) ─────────────────────────────────
+# 1. Download Context Engine.app from the releases page
+# 2. Drag to /Applications
+# 3. Right-click -> Open (first launch only -- bypasses Gatekeeper for unsigned app)
+# 4. Enable "Open at Login" in the Settings tab
+#
+# The app bundles the Python runtime and sentence-transformers model.
+# No Python installation required.
+#
+# ── Developer / CLI Install ───────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

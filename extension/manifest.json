@@ -27,5 +27,16 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "features/youtube-transcript/shared/result.js",
+        "features/youtube-transcript/shared/url.js",
+        "features/youtube-transcript/domain/transcript.js",
+        "features/youtube-transcript/background/page-extractor.js"
+      ],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*", "https://m.youtube.com/*"]
+    }
   ]
 }

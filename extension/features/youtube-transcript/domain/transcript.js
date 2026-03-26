@@ -33,12 +33,12 @@
     const videoId = extractVideoId(url);
 
     if (!videoId) {
-      return createTranscriptFailureResult(
-        url,
-        "invalid_url",
-        "Open a supported YouTube video page to extract a transcript.",
-        false,
-      );
+      return createTranscriptFailureResult({
+        videoId: url,
+        code: "invalid_url",
+        error: "Open a supported YouTube video page to extract a transcript.",
+        retryable: false,
+      });
     }
 
     const languages = settings.languages && settings.languages.length
@@ -53,13 +53,13 @@
       });
     } catch (error) {
       const normalized = normalizeTranscriptError(error);
-      return createTranscriptFailureResult(
+      return createTranscriptFailureResult({
         videoId,
-        normalized.code,
-        normalized.message,
-        normalized.retryable,
-        normalized.method ? { method: normalized.method } : undefined,
-      );
+        code: normalized.code,
+        error: normalized.message,
+        retryable: normalized.retryable,
+        ...(normalized.method ? { method: normalized.method } : {}),
+      });
     }
   }
 

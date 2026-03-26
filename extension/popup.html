@@ -46,6 +46,25 @@
     </button>
   </div>
 
+  <div class="card hidden" id="card-auth">
+    <label for="auth-token-input">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1l8 4v6c0 5-3.5 9.74-8 11-4.5-1.26-8-6-8-11V5l8-4z"/>
+        <path d="M9.5 12.5l1.75 1.75L15.5 10"/>
+      </svg>
+      Extension Auth
+    </label>
+    <p class="auth-helper-text" id="auth-helper-text">Paste the token from <code>~/.context-engine/token</code> to unlock collections and writes.</p>
+    <div class="auth-token-row">
+      <input id="auth-token-input" type="text" placeholder="Paste X-Context-Token" spellcheck="false" autocomplete="off">
+      <button id="save-auth-token-btn" class="btn-create">Save</button>
+    </div>
+    <div class="auth-actions">
+      <button id="clear-auth-token-btn" class="btn-auth-secondary">Clear</button>
+      <span id="auth-status-text" class="auth-status-text"></span>
+    </div>
+  </div>
+
   <div class="card" id="card-collection">
     <label for="collection-select">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

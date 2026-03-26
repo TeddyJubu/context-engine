@@ -166,6 +166,87 @@ class YouTubeTranscriptStorageTests(unittest.TestCase):
         self.assertNotIn("metadata_json", fetched.fields)
         self.assertAlmostEqual(fetched.vectors["embedding"][0], 0.25, places=5)
 
+    def test_collection_schema_migration_reembeds_legacy_dimension_vectors(self):
+        legacy_path = self.tempdir / "legacy-384"
+        legacy_schema = zvec.CollectionSchema(
+            name="legacy-384",
+            fields=[
+                zvec.FieldSchema(name="hash", data_type=zvec.DataType.STRING, nullable=False),
+                zvec.FieldSchema(name="text", data_type=zvec.DataType.STRING, nullable=False),
+                zvec.FieldSchema(name="source", data_type=zvec.DataType.STRING, nullable=True),
+                zvec.FieldSchema(name="agent", data_type=zvec.DataType.STRING, nullable=True),
+                zvec.FieldSchema(name="tags", data_type=zvec.DataType.ARRAY_STRING, nullable=True),
+                zvec.FieldSchema(name="ts", data_type=zvec.DataType.INT64, nullable=True),
+                zvec.FieldSchema(name="embed_model", data_type=zvec.DataType.STRING, nullable=True),
+            ],
+            vectors=[
+                zvec.VectorSchema(
+                    name="embedding",
+                    data_type=zvec.DataType.VECTOR_FP32,
+                    dimension=384,
+                ),
+            ],
+        )
+        legacy_coll = zvec.create_and_open(
+            str(legacy_path),
+            schema=legacy_schema,
+            option=server.COLLECTION_OPTION,
+        )
+        legacy_coll.insert(
+            zvec.Doc(
+                id="legacy-384-doc",
+                vectors={"embedding": [0.25] * 384},
+                fields={
+                    "hash": "legacy-384-doc",
+                    "text": "Re-embed me",
+                    "source": "manual",
+                    "agent": "context-engine",
+                    "tags": ["legacy"],
+                    "ts": 123,
+                    "embed_model": "all-MiniLM-L6-v2",
+                },
+            ),
+        )
+        legacy_coll.optimize()
+        del legacy_coll
+
+        migrated = server.open_collection_with_schema("legacy-384")
+        fetched = migrated.fetch(ids=["legacy-384-doc"])["legacy-384-doc"]
+
+        self.assertEqual(len(fetched.vectors["embedding"]), server.EMBED_DIM)
+        self.assertEqual(fetched.fields["embed_model"], server.MODEL_NAME)
+        self.assertNotAlmostEqual(fetched.vectors["embedding"][0], 0.25, places=5)
+
+    def test_existing_legacy_collection_name_remains_accessible(self):
+        legacy_name = "Legacy_Notes"
+        legacy_path = self.tempdir / legacy_name
+        legacy_coll = zvec.create_and_open(
+            str(legacy_path),
+            schema=server.make_schema(legacy_name),
+            option=server.COLLECTION_OPTION,
+        )
+        legacy_coll.insert(
+            zvec.Doc(
+                id="legacy-name-doc",
+                vectors={"embedding": [0.2] * server.EMBED_DIM},
+                fields={
+                    "hash": "legacy-name-doc",
+                    "text": "Legacy collection naming",
+                    "source": "manual",
+                    "agent": "context-engine",
+                    "tags": ["legacy"],
+                    "ts": 123,
+                    "embed_model": server.MODEL_NAME,
+                },
+            ),
+        )
+        legacy_coll.optimize()
+        del legacy_coll
+
+        coll = server.get_collection(legacy_name)
+        fetched = coll.fetch(ids=["legacy-name-doc"])["legacy-name-doc"]
+        self.assertEqual(fetched.fields["text"], "Legacy collection naming")
+
 
 if __name__ == "__main__":
     unittest.main()

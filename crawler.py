@@ -44,8 +44,8 @@ def extract_text(html: str) -> str:
     # Preserve code block formatting
     CODE_SENTINEL = "\x00CODE\x00"
     for pre in content.find_all("pre"):
-        code_text = pre.get_text()
-        pre.replace_with(f"{CODE_SENTINEL}```\n{code_text.strip()}\n```{CODE_SENTINEL}")
+        code_text = pre.get_text().strip("\n")
+        pre.replace_with(f"{CODE_SENTINEL}```\n{code_text}\n```{CODE_SENTINEL}")
 
     text = content.get_text(separator="\n", strip=True)
 
@@ -93,6 +93,11 @@ async def crawl_site(
     chunk_fn=None,
 ):
     """BFS crawl a site, chunking and embedding each page into a collection."""
+    if add_fn is None:
+        raise ValueError("crawl_site requires add_fn")
+    if chunk_fn is None:
+        raise ValueError("crawl_site requires chunk_fn")
+
     parsed = urlparse(url)
     domain = parsed.netloc
     if path_prefix is None:

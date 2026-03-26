@@ -17,14 +17,19 @@ echo "Installing dependencies..."
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
 
 # Create data directory
-mkdir -p ~/.context-engine/collections
+DATA_DIR="${CONTEXT_ENGINE_DIR:-$HOME/.context-engine}"
+TOKEN_FILE="$DATA_DIR/token"
+mkdir -p "$DATA_DIR/collections"
 
 # Generate auth token if it doesn't exist
-TOKEN_FILE="$HOME/.context-engine/token"
-if [ ! -f "$TOKEN_FILE" ]; then
+if [ -n "${CONTEXT_ENGINE_TOKEN:-}" ]; then
+    printf '%s\n' "$CONTEXT_ENGINE_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+    echo "Using auth token from CONTEXT_ENGINE_TOKEN."
+elif [ ! -s "$TOKEN_FILE" ]; then
     echo "Generating auth token..."
     python3 -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"
-    chmod 600 "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
     echo "  Token saved to $TOKEN_FILE"
 fi
 
@@ -68,7 +73,7 @@ echo "Test:"
 echo "  curl http://localhost:11811/health"
 echo ""
 echo "Auth token:"
-echo "  cat ~/.context-engine/token"
+echo "  cat $TOKEN_FILE"
 echo "  (paste this into the Chrome extension when prompted)"
 
 echo ""

@@ -407,6 +407,8 @@ Existing collections have a different schema (no `embed_model` field). Since we 
 
 ## TASK 4: Generate auth token randomly at install time
 
+> Historical implementation note: this task was planned against an earlier revision. Treat the code blocks below as reference examples only. Current acceptance criteria are that `CONTEXT_ENGINE_CONFIG.AUTH_TOKEN` defaults to an empty string in the extension, `background.js` and `popup.js` hydrate `authToken` from `chrome.storage.local`, and the popup provides a user path to save and validate the token before authenticated requests run.
+
 ### Goal
 Replace the hardcoded `"context-engine-local-token"` with a randomly generated token stored in `~/.context-engine/token`. The token file is created once during install and read by all components.
 
@@ -582,6 +584,8 @@ echo "  (paste this into the Chrome extension when prompted)"
 ---
 
 ## TASK 5: Authenticate read endpoints
+
+> Historical implementation note: this task was planned against an earlier revision. The stable requirement is that authenticated reads use `X-Context-Token`, `/health` stays unauthenticated, and popup/background/MCP clients send the current token rather than relying on hardcoded values.
 
 ### Goal
 Require the auth token on `GET /collections` and `POST /search` to prevent local data exfiltration. Keep `GET /health` unauthenticated (it leaks no user data).

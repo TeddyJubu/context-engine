@@ -26,14 +26,20 @@
     };
   }
 
-  function createTranscriptFailureResult(videoId, code, error, retryable, extras) {
+  function createTranscriptFailureResult({
+    videoId = "",
+    code,
+    error,
+    retryable = false,
+    ...extras
+  }) {
     return {
-      videoId: videoId || "",
+      ...extras,
+      videoId,
       success: false,
       error,
       code,
       retryable: Boolean(retryable),
-      ...(extras || {}),
     };
   }
 

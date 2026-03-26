@@ -22,18 +22,18 @@
     "features/youtube-transcript/background/page-extractor.js",
   ];
 
-  function validateActiveTab(tab) {
-    const url = tab && tab.url ? tab.url : "";
+  function validateActiveTab(source) {
+    const url = source && source.url ? source.url : "";
     const videoId = extractVideoId(url);
     if (!videoId || !isSupportedYouTubeUrl(url)) {
       return {
         ok: false,
-        result: createTranscriptFailureResult(
-          url,
-          "invalid_url",
-          "Open a supported YouTube video page to extract a transcript.",
-          false,
-        ),
+        result: createTranscriptFailureResult({
+          videoId,
+          code: "invalid_url",
+          error: "Open a supported YouTube video page to extract a transcript.",
+          retryable: false,
+        }),
       };
     }
 
@@ -60,13 +60,13 @@
     if (!transcriptResult || !transcriptResult.success) {
       return {
         success: false,
-        transcriptResult: transcriptResult || createTranscriptFailureResult(
-          validation.videoId,
-          "upstream_error",
-          "Transcript extraction did not return a result.",
-          true,
-          { method: "background-injection" },
-        ),
+        transcriptResult: transcriptResult || createTranscriptFailureResult({
+          videoId: validation.videoId,
+          code: "upstream_error",
+          error: "Transcript extraction did not return a result.",
+          retryable: true,
+          method: "background-injection",
+        }),
       };
     }
 
@@ -85,13 +85,13 @@
       if (!response.ok) {
         return {
           success: false,
-          transcriptResult: createTranscriptFailureResult(
-            validation.videoId,
-            "upstream_error",
-            "Context Engine add request failed with HTTP " + response.status + ".",
-            response.status >= 500,
-            { method: "background-add" },
-          ),
+          transcriptResult: createTranscriptFailureResult({
+            videoId: validation.videoId,
+            code: "upstream_error",
+            error: "Context Engine add request failed with HTTP " + response.status + ".",
+            retryable: response.status >= 500,
+            method: "background-add",
+          }),
         };
       }
 
@@ -103,13 +103,13 @@
     } catch (error) {
       return {
         success: false,
-        transcriptResult: createTranscriptFailureResult(
-          validation.videoId,
-          "upstream_error",
-          error instanceof Error ? error.message : String(error),
-          true,
-          { method: "background-add" },
-        ),
+        transcriptResult: createTranscriptFailureResult({
+          videoId: validation.videoId,
+          code: "upstream_error",
+          error: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          method: "background-add",
+        }),
       };
     }
   }
@@ -145,13 +145,13 @@
 
       return results && results[0] ? results[0].result : null;
     } catch (error) {
-      return createTranscriptFailureResult(
-        options && options.url ? options.url : "",
-        "upstream_error",
-        error instanceof Error ? error.message : String(error),
-        true,
-        { method: "background-injection" },
-      );
+      return createTranscriptFailureResult({
+        videoId: options && options.url ? options.url : "",
+        code: "upstream_error",
+        error: error instanceof Error ? error.message : String(error),
+        retryable: true,
+        method: "background-injection",
+      });
     }
   }
 

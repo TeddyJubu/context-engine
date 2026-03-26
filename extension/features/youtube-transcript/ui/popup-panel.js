@@ -71,10 +71,14 @@
 
     if (response.success) {
       const result = response.transcriptResult;
+      const added = Number((response.addResult && response.addResult.added) || 0);
+      if (added === 0) {
+        return "No new transcript chunks were added from \"" + result.title + "\".";
+      }
       const details = [result.language];
       details.push(result.isGenerated ? "auto-generated" : "manual");
       return "Added "
-        + String(response.addResult && response.addResult.added ? response.addResult.added : 0)
+        + String(added)
         + " transcript chunks from \"" + result.title + "\" (" + details.join(", ") + ").";
     }
 

@@ -103,6 +103,16 @@ body {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
+.status-badge.status-auth {
+  background: rgba(245, 158, 11, .12);
+  color: var(--warning);
+}
+
+.status-badge.status-auth .status-dot {
+  background: var(--warning);
+  box-shadow: 0 0 6px rgba(245, 158, 11, .55);
+}
+
 .status-badge.status-offline {
   background: var(--error-bg);
   color: var(--error);
@@ -513,6 +523,64 @@ input[type="text"].input-invalid {
 .btn-create:hover {
   background: rgba(99, 102, 241, .25);
   transform: translateY(-1px);
+}
+
+/* ===== Auth Card ===== */
+
+.auth-helper-text {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-helper-text code {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.auth-token-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.auth-token-row input {
+  flex: 1;
+}
+
+.auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.btn-auth-secondary {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-auth-secondary:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-light);
+  color: var(--text);
+}
+
+.auth-status-text {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
 }
 
 /* ===== Empty State ===== */

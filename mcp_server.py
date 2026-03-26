@@ -6,25 +6,24 @@ Thin wrapper that calls the HTTP API at localhost:11811.
 
 import httpx
 from mcp.server.fastmcp import FastMCP
-
-SERVER_URL = "http://127.0.0.1:11811"
+from context_engine_config import AUTH_HEADER, AUTH_TOKEN, DEFAULT_TOP_K, SERVER_URL
 
 mcp = FastMCP("context-engine", instructions="Semantic search over locally indexed web documentation and notes.")
 
 def _get(path: str) -> dict:
     with httpx.Client(timeout=30) as c:
-        r = c.get(f"{SERVER_URL}{path}")
+        r = c.get(f"{SERVER_URL}{path}", headers={AUTH_HEADER: AUTH_TOKEN})
         r.raise_for_status()
         return r.json()
 
 def _post(path: str, body: dict) -> dict:
     with httpx.Client(timeout=30) as c:
-        r = c.post(f"{SERVER_URL}{path}", json=body)
+        r = c.post(f"{SERVER_URL}{path}", json=body, headers={AUTH_HEADER: AUTH_TOKEN})
         r.raise_for_status()
         return r.json()
 
 @mcp.tool()
-def search_docs(query: str, collection: str | None = None, top_k: int = 8) -> str:
+def search_docs(query: str, collection: str | None = None, top_k: int = DEFAULT_TOP_K) -> str:
     """Semantic search across indexed documentation and notes.
 
     Args:
@@ -44,8 +43,22 @@ def search_docs(query: str, collection: str | None = None, top_k: int = 8) -> st
         source = r.get("source", "unknown")
         coll = r.get("collection", "")
         score = r.get("score")
+        source_type = r.get("source_type")
+        metadata = r.get("metadata") or {}
         score_str = f" (score: {score:.3f})" if score is not None else ""
-        parts.append(f"## Result {i}{score_str}\n**Source:** {source}\n**Collection:** {coll}\n\n{r['text']}")
+        lines = [f"## Result {i}{score_str}", f"**Source:** {source}", f"**Collection:** {coll}"]
+        if source_type:
+            lines.append(f"**Type:** {source_type}")
+        if source_type == "youtube_transcript":
+            if metadata.get("title"):
+                lines.append(f"**Title:** {metadata['title']}")
+            if metadata.get("language"):
+                lines.append(f"**Language:** {metadata['language']}")
+            if metadata.get("method"):
+                lines.append(f"**Method:** {metadata['method']}")
+        lines.append("")
+        lines.append(r["text"])
+        parts.append("\n".join(lines))
     return "\n\n---\n\n".join(parts)
 
 @mcp.tool()

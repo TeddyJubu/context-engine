@@ -1,6 +1,59 @@
 // Context Engine — Service Worker (background)
 
-const API_BASE = "http://localhost:11811";
+importScripts(
+  "config.js",
+  "features/youtube-transcript/shared/result.js",
+  "features/youtube-transcript/shared/url.js",
+  "features/youtube-transcript/domain/normalize.js",
+  "features/youtube-transcript/background/service.js",
+);
+
+let API_BASE = CONTEXT_ENGINE_CONFIG.API_BASE;
+let AUTH_HEADER = CONTEXT_ENGINE_CONFIG.AUTH_HEADER;
+let AUTH_TOKEN = CONTEXT_ENGINE_CONFIG.AUTH_TOKEN;
+
+// Load saved token from storage (set during initial popup connection)
+chrome.storage.local.get(["authToken"], (data) => {
+  if (data.authToken) {
+    AUTH_TOKEN = data.authToken;
+  }
+});
+
+function authHeaders(extra = {}) {
+  return {
+    ...extra,
+    [AUTH_HEADER]: AUTH_TOKEN,
+  };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action !== "youtube_transcript:add_active_tab") {
+    return false;
+  }
+
+  ContextEngineYouTubeTranscriptBackground.addActiveTabTranscript({
+    apiBase: API_BASE,
+    authHeaders,
+    collection: message.collection,
+    tabId: message.tabId,
+    url: message.url,
+  })
+    .then(sendResponse)
+    .catch((error) => {
+      sendResponse({
+        success: false,
+        transcriptResult: ContextEngineYouTubeTranscriptShared.createTranscriptFailureResult(
+          message.url || "",
+          "upstream_error",
+          error instanceof Error ? error.message : String(error),
+          true,
+          { method: "background-message" },
+        ),
+      });
+    });
+
+  return true;
+});
 
 // Create context menus on install
 chrome.runtime.onInstalled.addListener(() => {
@@ -30,7 +83,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
       const resp = await fetch(`${API_BASE}/add`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           text: info.selectionText,
           collection,
@@ -59,7 +112,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       if (result.result) {
         const resp = await fetch(`${API_BASE}/add`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             text: result.result,
             collection,

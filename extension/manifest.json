@@ -3,8 +3,8 @@
   "name": "Context Engine",
   "version": "1.0.0",
   "description": "Capture web docs and make them searchable by coding agents",
-  "permissions": ["activeTab", "contextMenus", "storage"],
-  "host_permissions": ["http://localhost:11811/*"],
+  "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
+  "host_permissions": ["http://localhost:11811/*", "http://127.0.0.1:11811/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

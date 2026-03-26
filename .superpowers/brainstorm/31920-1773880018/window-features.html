@@ -1,0 +1,102 @@
+<h2>What does the window show?</h2>
+<p class="subtitle">How much control do you want from inside the app?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f0f1a;padding:12px;font-family:-apple-system,sans-serif;">
+      <div style="background:#16213e;border-radius:12px;overflow:hidden;border:1px solid #2a2a4a;">
+        <div style="background:#1a1a3e;padding:8px 12px;display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#ffbd2e;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#28c840;display:inline-block;"></span>
+          <span style="color:#a0a0ff;font-size:11px;margin-left:8px;">⬡ Context Engine</span>
+        </div>
+        <div style="padding:16px;text-align:center;">
+          <div style="color:#22c55e;font-size:28px;margin-bottom:4px;">●</div>
+          <div style="color:#fff;font-size:13px;font-weight:600;margin-bottom:2px;">Server Running</div>
+          <div style="color:#6666aa;font-size:10px;margin-bottom:14px;">port 11811 · 3 collections · 48 docs</div>
+          <div style="background:#1a1a3e;border-radius:8px;padding:10px;text-align:left;margin-bottom:10px;">
+            <div style="color:#6666aa;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Collections</div>
+            <div style="color:#a0a0ff;font-size:10px;padding:3px 0;border-bottom:1px solid #2a2a4a22;">📁 test · 48 docs</div>
+          </div>
+          <div style="background:#4a9eff22;border:1px solid #4a9eff33;border-radius:6px;padding:5px 10px;font-size:10px;color:#4a9eff;">✓ Open at Login</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Status Dashboard</h3>
+      <p>Shows server status, collections list, and doc count. Toggle "Open at Login." Read-only — you manage data via the browser extension and Claude Code.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="manage" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f0f1a;padding:12px;font-family:-apple-system,sans-serif;">
+      <div style="background:#16213e;border-radius:12px;overflow:hidden;border:1px solid #2a2a4a;">
+        <div style="background:#1a1a3e;padding:8px 12px;display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#ffbd2e;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#28c840;display:inline-block;"></span>
+          <span style="color:#a0a0ff;font-size:11px;margin-left:8px;">⬡ Context Engine</span>
+        </div>
+        <div style="display:flex;height:140px;">
+          <!-- Sidebar -->
+          <div style="width:80px;background:#12122a;padding:8px;border-right:1px solid #2a2a4a;">
+            <div style="color:#4a9eff;font-size:9px;font-weight:600;padding:4px 6px;background:#4a9eff18;border-radius:4px;margin-bottom:3px;">Overview</div>
+            <div style="color:#6666aa;font-size:9px;padding:4px 6px;margin-bottom:3px;">Collections</div>
+            <div style="color:#6666aa;font-size:9px;padding:4px 6px;">Settings</div>
+          </div>
+          <!-- Content -->
+          <div style="flex:1;padding:10px;">
+            <div style="color:#fff;font-size:10px;font-weight:600;margin-bottom:8px;">Collections</div>
+            <div style="background:#12122a;border-radius:5px;padding:6px 8px;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
+              <span style="color:#a0a0ff;font-size:9px;">📁 test · 48</span>
+              <span style="color:#ff5f57;font-size:9px;cursor:pointer;">✕</span>
+            </div>
+            <div style="background:#4a9eff18;border:1px dashed #4a9eff44;border-radius:5px;padding:5px 8px;text-align:center;">
+              <span style="color:#4a9eff;font-size:9px;">+ New Collection</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Full Manager</h3>
+      <p>Sidebar with Overview, Collections, and Settings tabs. Create or delete collections directly from the app. More capable, slightly more complex to build.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="search" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f0f1a;padding:12px;font-family:-apple-system,sans-serif;">
+      <div style="background:#16213e;border-radius:12px;overflow:hidden;border:1px solid #2a2a4a;">
+        <div style="background:#1a1a3e;padding:8px 12px;display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#ffbd2e;display:inline-block;"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#28c840;display:inline-block;"></span>
+          <span style="color:#a0a0ff;font-size:11px;margin-left:8px;">⬡ Context Engine</span>
+        </div>
+        <div style="padding:10px;">
+          <div style="background:#12122a;border-radius:6px;padding:5px 10px;display:flex;align-items:center;gap:6px;margin-bottom:8px;border:1px solid #2a2a4a;">
+            <span style="color:#6666aa;font-size:10px;">🔍</span>
+            <span style="color:#6666aa;font-size:10px;">Search your context...</span>
+          </div>
+          <div style="background:#12122a;border-radius:6px;padding:8px;margin-bottom:4px;">
+            <div style="color:#a0a0ff;font-size:9px;font-weight:600;margin-bottom:2px;">Result from "test"</div>
+            <div style="color:#6666aa;font-size:9px;line-height:1.4;">The FastMCP server exposes three tools: search_docs, list_collections, and add_memory...</div>
+          </div>
+          <div style="background:#12122a;border-radius:6px;padding:8px;">
+            <div style="color:#a0a0ff;font-size:9px;font-weight:600;margin-bottom:2px;">Result from "test"</div>
+            <div style="color:#6666aa;font-size:9px;line-height:1.4;">Collections are stored in ~/.context-engine/collections/...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Search + Manage</h3>
+      <p>Includes a live search bar so you can preview what's in your context engine directly from the app. Useful for checking what Claude Code can "see."</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Click your preference, or tell me in the terminal.</p>

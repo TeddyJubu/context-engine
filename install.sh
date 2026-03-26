@@ -19,6 +19,15 @@ echo "Installing dependencies..."
 # Create data directory
 mkdir -p ~/.context-engine/collections
 
+# Generate auth token if it doesn't exist
+TOKEN_FILE="$HOME/.context-engine/token"
+if [ ! -f "$TOKEN_FILE" ]; then
+    echo "Generating auth token..."
+    python3 -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+    echo "  Token saved to $TOKEN_FILE"
+fi
+
 # Generate placeholder icons if they don't exist
 if [ ! -f "$SCRIPT_DIR/extension/icons/icon16.png" ]; then
     echo "Generating extension icons..."
@@ -57,6 +66,10 @@ echo "  {\"servers\": {\"context-engine\": {\"command\": \"$VENV_DIR/bin/python3
 echo ""
 echo "Test:"
 echo "  curl http://localhost:11811/health"
+echo ""
+echo "Auth token:"
+echo "  cat ~/.context-engine/token"
+echo "  (paste this into the Chrome extension when prompted)"
 
 echo ""
 echo "=== Connect to Coding Agents ==="

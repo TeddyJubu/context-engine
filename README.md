@@ -13,6 +13,7 @@ Chrome Extension  →  FastAPI Server (localhost:11811)  →  MCP Server  →  V
 ## Features
 
 - **Chrome Extension** — one-click capture of any page or selection; crawl entire doc sites
+- **YouTube transcripts** — optional popup tool to add the active YouTube video's captions locally through the browser session
 - **Semantic search** — `all-MiniLM-L6-v2` embeddings via sentence-transformers (384-dim, fully local)
 - **Multi-collection store** — separate zvec index per topic (e.g. `raycast-docs`, `react-docs`)
 - **Async BFS crawler** — polite, concurrent crawling of documentation sites
@@ -174,7 +175,7 @@ The server runs at `http://localhost:11811`.
 | `GET` | `/collections` | — | List all collections with doc counts |
 | `POST` | `/collections` | `{name}` | Create a collection |
 | `DELETE` | `/collections/{name}` | — | Delete a collection |
-| `POST` | `/add` | `{text, collection, source?, tags?}` | Add text (auto-chunked) |
+| `POST` | `/add` | `{text, collection, source?, tags?, source_type?, metadata?}` | Add text (auto-chunked) |
 | `POST` | `/search` | `{query, collection?, top_k?, filter_tags?}` | Semantic search |
 | `POST` | `/crawl` | `{url, collection, max_pages?, path_prefix?}` | Start async crawl |
 | `GET` | `/crawl/{task_id}` | — | Poll crawl progress |
@@ -236,11 +237,18 @@ The popup gives you full control:
 - **Collection picker** — switch between collections or create new ones
 - **Add this page** — extracts and indexes the current page's main content
 - **Add selection** — indexes only the text you've highlighted
+- **YouTube Transcript** — extracts captions from the active YouTube video tab and stores them as `youtube_transcript` context
 - **Crawl site** — BFS crawl from the current URL up to N pages, with live progress
 
 Right-click context menus:
 - **Add selection to Context Engine** — on any selected text
 - **Add page to Context Engine** — on any page
+
+### YouTube transcript notes
+
+- Open a supported YouTube video tab, choose a collection, then click **Add transcript** in the popup.
+- Transcript extraction stays local to the extension and uses the browser's live YouTube session.
+- Successful items are stored with `source_type: youtube_transcript` and metadata including video id, title, URL, language, generated/manual caption status, and extraction method.
 
 ---
 

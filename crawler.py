@@ -17,20 +17,44 @@ log = logging.getLogger("context-engine.crawler")
 STRIP_TAGS = {"script", "style", "nav", "footer", "header", "aside", "noscript", "svg", "iframe"}
 
 def extract_text(html: str) -> str:
-    """Extract clean text from HTML, preferring main/article content."""
+    """Extract clean text from HTML, preserving heading structure as markdown-style markers.
+    Headings become double-newline separated sections, which the recursive splitter
+    uses as natural chunk boundaries.
+    """
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove unwanted tags
     for tag in soup.find_all(STRIP_TAGS):
         tag.decompose()
 
-    # Try main content areas first
     content = soup.find("main") or soup.find("article") or soup.find("body")
     if content is None:
         return ""
 
+    # Replace headings with markdown-style markers so the recursive splitter
+    # treats them as natural \n\n split points.
+    # Use a sentinel prefix so get_text doesn't eat the newlines.
+    HEADING_SENTINEL = "\x00HEADING\x00"
+    for heading in content.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        level = int(heading.name[1])
+        prefix = "#" * level
+        heading_text = heading.get_text(strip=True)
+        if heading_text:
+            heading.replace_with(f"{HEADING_SENTINEL}{prefix} {heading_text}{HEADING_SENTINEL}")
+
+    # Preserve code block formatting
+    CODE_SENTINEL = "\x00CODE\x00"
+    for pre in content.find_all("pre"):
+        code_text = pre.get_text()
+        pre.replace_with(f"{CODE_SENTINEL}```\n{code_text.strip()}\n```{CODE_SENTINEL}")
+
     text = content.get_text(separator="\n", strip=True)
-    # Collapse multiple blank lines
+
+    # Expand sentinels into double-newline separated blocks
+    text = re.sub(re.escape(HEADING_SENTINEL) + r"(.+?)" + re.escape(HEADING_SENTINEL),
+                  r"\n\n\1\n\n", text)
+    text = re.sub(re.escape(CODE_SENTINEL) + r"(.+?)" + re.escape(CODE_SENTINEL),
+                  r"\n\n\1\n\n", text, flags=re.DOTALL)
+
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -66,6 +90,7 @@ async def crawl_site(
     path_prefix: str | None = None,
     embed_fn=None,
     add_fn=None,
+    chunk_fn=None,
 ):
     """BFS crawl a site, chunking and embedding each page into a collection."""
     parsed = urlparse(url)
@@ -108,8 +133,7 @@ async def crawl_site(
                 continue
 
             # Chunk and add
-            from server import chunk_text
-            chunks = chunk_text(text, size=400)
+            chunks = chunk_fn(text)
             for chunk in chunks:
                 add_fn(chunk, collection, source=current_url)
 

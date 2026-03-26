@@ -1,6 +1,29 @@
 // Context Engine — Popup Script
 
-const API = "http://localhost:11811";
+const CONFIG = globalThis.CONTEXT_ENGINE_CONFIG || {
+  API_BASE: "http://localhost:11811",
+  AUTH_HEADER: "X-Context-Token",
+  AUTH_TOKEN: "",
+};
+
+let API = CONFIG.API_BASE;
+let AUTH_HEADER = CONFIG.AUTH_HEADER;
+let AUTH_TOKEN = CONFIG.AUTH_TOKEN;
+
+// Load persisted token
+(async () => {
+  const stored = await chrome.storage.local.get(["authToken"]);
+  if (stored.authToken) {
+    AUTH_TOKEN = stored.authToken;
+  }
+})();
+
+function authHeaders(extra = {}) {
+  return {
+    ...extra,
+    [AUTH_HEADER]: AUTH_TOKEN,
+  };
+}
 
 const statusBadge = document.getElementById("status-badge");
 const statusLabel = document.getElementById("status-label");
@@ -16,6 +39,7 @@ const collInputError = document.getElementById("coll-input-error");
 const createCollBtn = document.getElementById("create-collection-btn");
 const addPageBtn = document.getElementById("add-page-btn");
 const addSelBtn = document.getElementById("add-selection-btn");
+const addYouTubeTranscriptBtn = document.getElementById("add-youtube-transcript-btn");
 const crawlUrl = document.getElementById("crawl-url");
 const crawlUrlError = document.getElementById("crawl-url-error");
 const crawlMax = document.getElementById("crawl-max");
@@ -27,10 +51,19 @@ const crawlProgressBar = document.getElementById("crawl-progress-bar");
 const toastContainer = document.getElementById("toast-container");
 const cardCollection = document.getElementById("card-collection");
 const cardActions = document.getElementById("card-actions");
+const cardYouTube = document.getElementById("card-youtube");
 const cardCrawl = document.getElementById("card-crawl");
 const emptyCreateBtn = document.getElementById("empty-create-btn");
+const youtubeStatusChip = document.getElementById("youtube-status-chip");
+const youtubeHelperText = document.getElementById("youtube-helper-text");
+const youtubeVideoMeta = document.getElementById("youtube-video-meta");
+const youtubeVideoTitle = document.getElementById("youtube-video-title");
+const youtubeVideoUrl = document.getElementById("youtube-video-url");
+
+const youtubePanelUI = globalThis.ContextEngineYouTubeTranscriptUI;
 
 let serverOnline = false;
+let activeTabSnapshot = null;
 
 // ===== SVG Icon Helpers =====
 
@@ -88,6 +121,7 @@ function setOnline(online) {
     offlineBanner.classList.add("hidden");
     cardCollection.classList.remove("disabled-card");
     cardActions.classList.remove("disabled-card");
+    cardYouTube.classList.remove("disabled-card");
     cardCrawl.classList.remove("disabled-card");
     addPageBtn.disabled = false;
     addSelBtn.disabled = false;
@@ -98,9 +132,11 @@ function setOnline(online) {
     offlineBanner.classList.remove("hidden");
     cardCollection.classList.add("disabled-card");
     cardActions.classList.add("disabled-card");
+    cardYouTube.classList.add("disabled-card");
     cardCrawl.classList.add("disabled-card");
     addPageBtn.disabled = true;
     addSelBtn.disabled = true;
+    addYouTubeTranscriptBtn.disabled = true;
     crawlBtn.disabled = true;
   }
 }
@@ -122,6 +158,7 @@ retryBtn.addEventListener("click", async () => {
   retryBtn.style.opacity = ".5";
   const online = await checkServer();
   if (online) await loadCollections();
+  await refreshYouTubePanel();
   retryBtn.disabled = false;
   retryBtn.style.opacity = "";
 });
@@ -130,7 +167,9 @@ retryBtn.addEventListener("click", async () => {
 
 async function loadCollections() {
   try {
-    const r = await fetch(`${API}/collections`);
+    const r = await fetch(`${API}/collections`, {
+      headers: authHeaders(),
+    });
     const data = await r.json();
     collSelect.innerHTML = "";
     if (data.length === 0) {
@@ -214,7 +253,7 @@ createCollBtn.addEventListener("click", async () => {
   try {
     await fetch(`${API}/collections`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ name }),
     });
     newCollInput.value = "";
@@ -259,7 +298,7 @@ addPageBtn.addEventListener("click", async () => {
     setButtonLoading(addPageBtn, true);
     const r = await fetch(`${API}/add`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         text: response.text,
         collection: collSelect.value || "default",
@@ -290,7 +329,7 @@ addSelBtn.addEventListener("click", async () => {
     setButtonLoading(addSelBtn, true);
     const r = await fetch(`${API}/add`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         text: response.text,
         collection: collSelect.value || "default",
@@ -305,6 +344,77 @@ addSelBtn.addEventListener("click", async () => {
     showMessage("Failed: " + e.message, "error");
   } finally {
     setButtonLoading(addSelBtn, false, "Add selection");
+  }
+});
+
+// ===== YouTube Transcript =====
+
+async function getActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs && tabs[0] ? tabs[0] : null;
+}
+
+async function refreshYouTubePanel() {
+  if (!youtubePanelUI) return;
+
+  try {
+    activeTabSnapshot = await getActiveTab();
+  } catch {
+    activeTabSnapshot = null;
+  }
+
+  const state = youtubePanelUI.buildPanelState(activeTabSnapshot, serverOnline);
+  youtubePanelUI.renderPanelState({
+    button: addYouTubeTranscriptBtn,
+    helper: youtubeHelperText,
+    meta: youtubeVideoMeta,
+    status: youtubeStatusChip,
+    title: youtubeVideoTitle,
+    url: youtubeVideoUrl,
+  }, state);
+}
+
+addYouTubeTranscriptBtn.addEventListener("click", async () => {
+  const tab = await getActiveTab();
+  activeTabSnapshot = tab;
+
+  const state = youtubePanelUI.buildPanelState(tab, serverOnline);
+  youtubePanelUI.renderPanelState({
+    button: addYouTubeTranscriptBtn,
+    helper: youtubeHelperText,
+    meta: youtubeVideoMeta,
+    status: youtubeStatusChip,
+    title: youtubeVideoTitle,
+    url: youtubeVideoUrl,
+  }, state);
+
+  if (!state.canExtract) {
+    showMessage(state.hint, "error");
+    return;
+  }
+
+  try {
+    setButtonLoading(addYouTubeTranscriptBtn, true);
+    const response = await chrome.runtime.sendMessage({
+      action: "youtube_transcript:add_active_tab",
+      collection: collSelect.value || "default",
+      tabId: tab.id,
+      url: tab.url,
+    });
+
+    showMessage(
+      youtubePanelUI.formatResultMessage(response),
+      response && response.success ? "success" : "error",
+    );
+
+    if (response && response.success) {
+      await loadCollections();
+    }
+  } catch (e) {
+    showMessage("Failed: " + e.message, "error");
+  } finally {
+    setButtonLoading(addYouTubeTranscriptBtn, false, "Add transcript");
+    await refreshYouTubePanel();
   }
 });
 
@@ -367,7 +477,7 @@ crawlBtn.addEventListener("click", async () => {
   try {
     const r = await fetch(`${API}/crawl`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         url,
         collection: collSelect.value || "default",
@@ -385,7 +495,9 @@ crawlBtn.addEventListener("click", async () => {
 
     const poll = setInterval(async () => {
       try {
-        const sr = await fetch(`${API}/crawl/${taskId}`);
+        const sr = await fetch(`${API}/crawl/${taskId}`, {
+          headers: authHeaders(),
+        });
         const st = await sr.json();
         const crawled = st.pages_crawled || 0;
         const total = st.pages_total || 1;
@@ -441,4 +553,5 @@ crawlBtn.addEventListener("click", async () => {
   if (await checkServer()) {
     await loadCollections();
   }
+  await refreshYouTubePanel();
 })();

@@ -1,11 +1,51 @@
 // Context Engine — Popup Script
 
-const API = "http://localhost:11811";
+const CONFIG = globalThis.CONTEXT_ENGINE_CONFIG || {
+  API_BASE: "http://localhost:11811",
+  AUTH_HEADER: "X-Context-Token",
+  AUTH_TOKEN: "",
+};
+
+let API = CONFIG.API_BASE;
+let AUTH_HEADER = CONFIG.AUTH_HEADER;
+let AUTH_TOKEN = CONFIG.AUTH_TOKEN;
+
+const authReady = (async () => {
+  const stored = await chrome.storage.local.get(["authToken"]);
+  AUTH_TOKEN = stored.authToken || AUTH_TOKEN;
+  const tokenInput = document.getElementById("auth-token-input");
+  if (tokenInput) {
+    tokenInput.value = AUTH_TOKEN;
+  }
+})();
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.authToken) {
+    AUTH_TOKEN = changes.authToken.newValue || "";
+    const tokenInput = document.getElementById("auth-token-input");
+    if (tokenInput && tokenInput.value !== AUTH_TOKEN) {
+      tokenInput.value = AUTH_TOKEN;
+    }
+  }
+});
+
+function authHeaders(extra = {}) {
+  return {
+    ...extra,
+    [AUTH_HEADER]: AUTH_TOKEN,
+  };
+}
 
 const statusBadge = document.getElementById("status-badge");
 const statusLabel = document.getElementById("status-label");
 const offlineBanner = document.getElementById("offline-banner");
 const retryBtn = document.getElementById("retry-btn");
+const cardAuth = document.getElementById("card-auth");
+const authHelperText = document.getElementById("auth-helper-text");
+const authTokenInput = document.getElementById("auth-token-input");
+const saveAuthTokenBtn = document.getElementById("save-auth-token-btn");
+const clearAuthTokenBtn = document.getElementById("clear-auth-token-btn");
+const authStatusText = document.getElementById("auth-status-text");
 const collSelect = document.getElementById("collection-select");
 const collectionRow = document.getElementById("collection-row");
 const emptyState = document.getElementById("empty-state");
@@ -16,6 +56,7 @@ const collInputError = document.getElementById("coll-input-error");
 const createCollBtn = document.getElementById("create-collection-btn");
 const addPageBtn = document.getElementById("add-page-btn");
 const addSelBtn = document.getElementById("add-selection-btn");
+const addYouTubeTranscriptBtn = document.getElementById("add-youtube-transcript-btn");
 const crawlUrl = document.getElementById("crawl-url");
 const crawlUrlError = document.getElementById("crawl-url-error");
 const crawlMax = document.getElementById("crawl-max");
@@ -27,10 +68,29 @@ const crawlProgressBar = document.getElementById("crawl-progress-bar");
 const toastContainer = document.getElementById("toast-container");
 const cardCollection = document.getElementById("card-collection");
 const cardActions = document.getElementById("card-actions");
+const cardYouTube = document.getElementById("card-youtube");
 const cardCrawl = document.getElementById("card-crawl");
 const emptyCreateBtn = document.getElementById("empty-create-btn");
+const youtubeStatusChip = document.getElementById("youtube-status-chip");
+const youtubeHelperText = document.getElementById("youtube-helper-text");
+const youtubeVideoMeta = document.getElementById("youtube-video-meta");
+const youtubeVideoTitle = document.getElementById("youtube-video-title");
+const youtubeVideoUrl = document.getElementById("youtube-video-url");
+
+const youtubePanelUI = globalThis.ContextEngineYouTubeTranscriptUI;
 
 let serverOnline = false;
+let serverAuthorized = false;
+let authStatusMessage = "";
+let activeTabSnapshot = null;
+
+if (!youtubePanelUI) {
+  cardYouTube.classList.add("disabled-card");
+  addYouTubeTranscriptBtn.disabled = true;
+  youtubeStatusChip.textContent = "Unavailable";
+  youtubeStatusChip.className = "youtube-chip youtube-chip-muted";
+  youtubeHelperText.textContent = "YouTube transcript tools are unavailable in this build.";
+}
 
 // ===== SVG Icon Helpers =====
 
@@ -82,27 +142,62 @@ function dismissToast(toast) {
 
 function setOnline(online) {
   serverOnline = online;
-  if (online) {
-    statusBadge.className = "status-badge status-online";
-    statusLabel.textContent = "Connected";
-    offlineBanner.classList.add("hidden");
-    cardCollection.classList.remove("disabled-card");
-    cardActions.classList.remove("disabled-card");
-    cardCrawl.classList.remove("disabled-card");
-    addPageBtn.disabled = false;
-    addSelBtn.disabled = false;
-    crawlBtn.disabled = false;
-  } else {
+  if (!online) {
+    serverAuthorized = false;
+  }
+  applyAccessState();
+}
+
+function setAuthorized(authorized, message = "") {
+  serverAuthorized = authorized;
+  authStatusMessage = message;
+  applyAccessState();
+}
+
+function applyAccessState() {
+  const interactive = serverOnline && serverAuthorized;
+
+  if (!serverOnline) {
     statusBadge.className = "status-badge status-offline";
     statusLabel.textContent = "Offline";
     offlineBanner.classList.remove("hidden");
-    cardCollection.classList.add("disabled-card");
-    cardActions.classList.add("disabled-card");
-    cardCrawl.classList.add("disabled-card");
-    addPageBtn.disabled = true;
-    addSelBtn.disabled = true;
-    crawlBtn.disabled = true;
+  } else if (!serverAuthorized) {
+    statusBadge.className = "status-badge status-auth";
+    statusLabel.textContent = "Auth Needed";
+    offlineBanner.classList.add("hidden");
+  } else {
+    statusBadge.className = "status-badge status-online";
+    statusLabel.textContent = "Connected";
+    offlineBanner.classList.add("hidden");
   }
+
+  cardCollection.classList.toggle("disabled-card", !interactive);
+  cardActions.classList.toggle("disabled-card", !interactive);
+  cardYouTube.classList.toggle("disabled-card", !interactive);
+  cardCrawl.classList.toggle("disabled-card", !interactive);
+
+  addPageBtn.disabled = !interactive;
+  addSelBtn.disabled = !interactive;
+  addYouTubeTranscriptBtn.disabled = !interactive || !youtubePanelUI;
+  crawlBtn.disabled = !interactive;
+
+  updateAuthCard();
+}
+
+function updateAuthCard() {
+  const shouldShow = serverOnline && !serverAuthorized;
+  cardAuth.classList.toggle("hidden", !shouldShow);
+  authHelperText.textContent = shouldShow
+    ? "Paste the token from ~/.context-engine/token to unlock collections and writes."
+    : "Paste the token from ~/.context-engine/token to unlock collections and writes.";
+  authStatusText.textContent = authStatusMessage;
+}
+
+function resetCollectionsState() {
+  collSelect.innerHTML = '<option value="default">default</option>';
+  collSelect.value = "default";
+  emptyState.classList.remove("hidden");
+  collectionRow.style.display = "none";
 }
 
 async function checkServer() {
@@ -121,22 +216,141 @@ retryBtn.addEventListener("click", async () => {
   retryBtn.disabled = true;
   retryBtn.style.opacity = ".5";
   const online = await checkServer();
-  if (online) await loadCollections();
+  if (online && await checkAuthorization()) {
+    await loadCollections();
+  }
+  await refreshYouTubePanel();
   retryBtn.disabled = false;
   retryBtn.style.opacity = "";
+});
+
+async function getResponseError(response) {
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {}
+
+  if (body && typeof body === "object") {
+    if (body.detail) return body.detail;
+    if (body.error) return body.error;
+    if (body.status) return body.status;
+  }
+
+  return `Request failed with HTTP ${response.status}.`;
+}
+
+async function checkAuthorization() {
+  if (!serverOnline) {
+    setAuthorized(false);
+    return false;
+  }
+
+  if (!AUTH_TOKEN) {
+    setAuthorized(false, "Paste the token from ~/.context-engine/token and click Save.");
+    resetCollectionsState();
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${API}/token-check`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (response.ok) {
+      setAuthorized(true, "");
+      authTokenInput.classList.remove("input-invalid");
+      return true;
+    }
+
+    const errorMessage = await getResponseError(response);
+    setAuthorized(false, response.status === 401 ? errorMessage : "Could not verify the token.");
+    resetCollectionsState();
+    if (response.status === 401) {
+      authTokenInput.classList.add("input-invalid");
+    }
+    return false;
+  } catch {
+    setAuthorized(false, "Could not verify the token right now.");
+    resetCollectionsState();
+    return false;
+  }
+}
+
+function handleUnauthorized(message = "Unauthorized") {
+  setAuthorized(false, message);
+  authTokenInput.classList.add("input-invalid");
+  resetCollectionsState();
+  refreshYouTubePanel().catch(() => {});
+}
+
+authTokenInput.addEventListener("input", () => {
+  authTokenInput.classList.remove("input-invalid");
+  authStatusText.textContent = "";
+});
+
+saveAuthTokenBtn.addEventListener("click", async () => {
+  const token = authTokenInput.value.trim();
+  AUTH_TOKEN = token;
+  await chrome.storage.local.set({ authToken: token });
+
+  if (!token) {
+    handleUnauthorized("Paste a token before saving.");
+    return;
+  }
+
+  authStatusText.textContent = "Checking token...";
+  authTokenInput.classList.remove("input-invalid");
+
+  const online = await checkServer();
+  if (!online) {
+    authStatusText.textContent = "Saved locally. Start the server to verify it.";
+    return;
+  }
+
+  if (await checkAuthorization()) {
+    await loadCollections();
+    await refreshYouTubePanel();
+    showMessage("Auth token saved");
+    return;
+  }
+
+  await refreshYouTubePanel();
+});
+
+clearAuthTokenBtn.addEventListener("click", async () => {
+  AUTH_TOKEN = "";
+  await chrome.storage.local.remove("authToken");
+  authTokenInput.value = "";
+  authTokenInput.classList.remove("input-invalid");
+  setAuthorized(false, "Paste the token from ~/.context-engine/token and click Save.");
+  resetCollectionsState();
+  await refreshYouTubePanel();
 });
 
 // ===== Collections =====
 
 async function loadCollections() {
   try {
-    const r = await fetch(`${API}/collections`);
+    const r = await fetch(`${API}/collections`, {
+      headers: authHeaders(),
+    });
+    if (!r.ok) {
+      if (r.status === 401) {
+        handleUnauthorized(await getResponseError(r));
+        return;
+      }
+      showMessage(await getResponseError(r), "error");
+      return;
+    }
     const data = await r.json();
+    if (!Array.isArray(data)) {
+      showMessage("Collections response was invalid.", "error");
+      return;
+    }
+    setAuthorized(true, "");
     collSelect.innerHTML = "";
     if (data.length === 0) {
-      collSelect.innerHTML = '<option value="default">default</option>';
-      emptyState.classList.remove("hidden");
-      collectionRow.style.display = "none";
+      resetCollectionsState();
     } else {
       emptyState.classList.add("hidden");
       collectionRow.style.display = "";
@@ -212,19 +426,27 @@ createCollBtn.addEventListener("click", async () => {
     return;
   }
   try {
-    await fetch(`${API}/collections`, {
+    const response = await fetch(`${API}/collections`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ name }),
     });
+    if (!response.ok) {
+      if (response.status === 401) {
+        handleUnauthorized(await getResponseError(response));
+        return;
+      }
+      throw new Error(await getResponseError(response));
+    }
+    const data = await response.json();
     newCollInput.value = "";
     closeCollForm();
     await loadCollections();
-    collSelect.value = name.toLowerCase().replace(/ /g, "-");
+    collSelect.value = data.name;
     chrome.storage.local.set({ activeCollection: collSelect.value });
     showMessage(`Collection "${collSelect.value}" created`);
   } catch (e) {
-    showMessage("Failed to create collection", "error");
+    showMessage("Failed to create collection: " + e.message, "error");
   }
 });
 
@@ -259,7 +481,7 @@ addPageBtn.addEventListener("click", async () => {
     setButtonLoading(addPageBtn, true);
     const r = await fetch(`${API}/add`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         text: response.text,
         collection: collSelect.value || "default",
@@ -267,6 +489,13 @@ addPageBtn.addEventListener("click", async () => {
         tags: ["page"],
       }),
     });
+    if (!r.ok) {
+      if (r.status === 401) {
+        handleUnauthorized(await getResponseError(r));
+        return;
+      }
+      throw new Error(await getResponseError(r));
+    }
     const data = await r.json();
     showMessage(`Added ${data.added || 0} chunks`);
     await loadCollections();
@@ -290,7 +519,7 @@ addSelBtn.addEventListener("click", async () => {
     setButtonLoading(addSelBtn, true);
     const r = await fetch(`${API}/add`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         text: response.text,
         collection: collSelect.value || "default",
@@ -298,6 +527,13 @@ addSelBtn.addEventListener("click", async () => {
         tags: ["selection"],
       }),
     });
+    if (!r.ok) {
+      if (r.status === 401) {
+        handleUnauthorized(await getResponseError(r));
+        return;
+      }
+      throw new Error(await getResponseError(r));
+    }
     const data = await r.json();
     showMessage(`Added ${data.added || 0} chunks`);
     await loadCollections();
@@ -305,6 +541,88 @@ addSelBtn.addEventListener("click", async () => {
     showMessage("Failed: " + e.message, "error");
   } finally {
     setButtonLoading(addSelBtn, false, "Add selection");
+  }
+});
+
+// ===== YouTube Transcript =====
+
+async function getActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs && tabs[0] ? tabs[0] : null;
+}
+
+async function refreshYouTubePanel() {
+  if (!youtubePanelUI) return;
+
+  try {
+    activeTabSnapshot = await getActiveTab();
+  } catch {
+    activeTabSnapshot = null;
+  }
+
+  const state = youtubePanelUI.buildPanelState(activeTabSnapshot, serverOnline && serverAuthorized);
+  youtubePanelUI.renderPanelState({
+    button: addYouTubeTranscriptBtn,
+    helper: youtubeHelperText,
+    meta: youtubeVideoMeta,
+    status: youtubeStatusChip,
+    title: youtubeVideoTitle,
+    url: youtubeVideoUrl,
+  }, state);
+}
+
+addYouTubeTranscriptBtn.addEventListener("click", async () => {
+  if (!youtubePanelUI) {
+    showMessage("YouTube transcript tools are unavailable in this build.", "error");
+    return;
+  }
+
+  const tab = await getActiveTab();
+  activeTabSnapshot = tab;
+
+  const state = youtubePanelUI.buildPanelState(tab, serverOnline && serverAuthorized);
+  youtubePanelUI.renderPanelState({
+    button: addYouTubeTranscriptBtn,
+    helper: youtubeHelperText,
+    meta: youtubeVideoMeta,
+    status: youtubeStatusChip,
+    title: youtubeVideoTitle,
+    url: youtubeVideoUrl,
+  }, state);
+
+  if (!state.canExtract) {
+    showMessage(state.hint, "error");
+    return;
+  }
+
+  try {
+    setButtonLoading(addYouTubeTranscriptBtn, true);
+    const response = await chrome.runtime.sendMessage({
+      action: "youtube_transcript:add_active_tab",
+      collection: collSelect.value || "default",
+      tabId: tab.id,
+      url: tab.url,
+    });
+
+    if (response && response.authFailed) {
+      handleUnauthorized(response.error || "Unauthorized");
+      showMessage(response.error || "Authorization is required to add transcripts.", "error");
+      return;
+    }
+
+    showMessage(
+      youtubePanelUI.formatResultMessage(response),
+      response && response.success ? "success" : "error",
+    );
+
+    if (response && response.success) {
+      await loadCollections();
+    }
+  } catch (e) {
+    showMessage("Failed: " + e.message, "error");
+  } finally {
+    setButtonLoading(addYouTubeTranscriptBtn, false, "Add transcript");
+    await refreshYouTubePanel();
   }
 });
 
@@ -358,6 +676,12 @@ crawlBtn.addEventListener("click", async () => {
   const label = crawlBtn.querySelector(".btn-label");
   const spinner = crawlBtn.querySelector(".spinner");
   const svgIcon = crawlBtn.querySelector("svg:first-of-type");
+  const resetCrawlButton = () => {
+    crawlBtn.disabled = false;
+    if (label) label.textContent = "Crawl";
+    if (spinner) spinner.classList.add("hidden");
+    if (svgIcon) svgIcon.classList.remove("hidden");
+  };
 
   crawlBtn.disabled = true;
   if (label) label.textContent = "Starting\u2026";
@@ -367,13 +691,21 @@ crawlBtn.addEventListener("click", async () => {
   try {
     const r = await fetch(`${API}/crawl`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         url,
         collection: collSelect.value || "default",
         max_pages: parseInt(crawlMax.value) || 50,
       }),
     });
+    if (!r.ok) {
+      if (r.status === 401) {
+        handleUnauthorized(await getResponseError(r));
+        resetCrawlButton();
+        return;
+      }
+      throw new Error(await getResponseError(r));
+    }
     const data = await r.json();
     const taskId = data.task_id;
 
@@ -385,7 +717,20 @@ crawlBtn.addEventListener("click", async () => {
 
     const poll = setInterval(async () => {
       try {
-        const sr = await fetch(`${API}/crawl/${taskId}`);
+        const sr = await fetch(`${API}/crawl/${taskId}`, {
+          headers: authHeaders(),
+        });
+        if (!sr.ok) {
+          if (sr.status === 401) {
+            handleUnauthorized(await getResponseError(sr));
+            clearInterval(poll);
+            resetCrawlButton();
+            crawlProgress.classList.add("hidden");
+            showMessage("Authorization is required to continue this crawl.", "error");
+            return;
+          }
+          throw new Error(await getResponseError(sr));
+        }
         const st = await sr.json();
         const crawled = st.pages_crawled || 0;
         const total = st.pages_total || 1;
@@ -399,10 +744,7 @@ crawlBtn.addEventListener("click", async () => {
           clearInterval(poll);
           crawlProgressBar.classList.remove("pulsing");
 
-          crawlBtn.disabled = false;
-          if (label) label.textContent = "Crawl";
-          if (spinner) spinner.classList.add("hidden");
-          if (svgIcon) svgIcon.classList.remove("hidden");
+          resetCrawlButton();
 
           await loadCollections();
           if (st.status === "done") {
@@ -419,26 +761,24 @@ crawlBtn.addEventListener("click", async () => {
         }
       } catch {
         clearInterval(poll);
-        crawlBtn.disabled = false;
-        if (label) label.textContent = "Crawl";
-        if (spinner) spinner.classList.add("hidden");
-        if (svgIcon) svgIcon.classList.remove("hidden");
+        resetCrawlButton();
         crawlProgress.classList.add("hidden");
       }
     }, 2000);
   } catch (e) {
     showMessage("Crawl failed: " + e.message, "error");
-    crawlBtn.disabled = false;
-    if (label) label.textContent = "Crawl";
-    if (spinner) spinner.classList.add("hidden");
-    if (svgIcon) svgIcon.classList.remove("hidden");
+    resetCrawlButton();
   }
 });
 
 // ===== Init =====
 
 (async () => {
+  await authReady;
   if (await checkServer()) {
-    await loadCollections();
+    if (await checkAuthorization()) {
+      await loadCollections();
+    }
   }
+  await refreshYouTubePanel();
 })();

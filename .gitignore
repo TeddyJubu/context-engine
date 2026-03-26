@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+/.superpowers/
 
 # Mac app build artifacts
 dist/

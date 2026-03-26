@@ -1,6 +1,67 @@
 // Context Engine — Service Worker (background)
 
-const API_BASE = "http://localhost:11811";
+importScripts(
+  "config.js",
+  "features/youtube-transcript/shared/result.js",
+  "features/youtube-transcript/shared/url.js",
+  "features/youtube-transcript/domain/normalize.js",
+  "features/youtube-transcript/background/service.js",
+);
+
+let API_BASE = CONTEXT_ENGINE_CONFIG.API_BASE;
+let AUTH_HEADER = CONTEXT_ENGINE_CONFIG.AUTH_HEADER;
+let AUTH_TOKEN = CONTEXT_ENGINE_CONFIG.AUTH_TOKEN;
+
+const authTokenReady = new Promise((resolve) => {
+  chrome.storage.local.get(["authToken"], (data) => {
+    AUTH_TOKEN = data.authToken || AUTH_TOKEN;
+    resolve();
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.authToken) {
+    AUTH_TOKEN = changes.authToken.newValue || "";
+  }
+});
+
+function authHeaders(extra = {}) {
+  return {
+    ...extra,
+    [AUTH_HEADER]: AUTH_TOKEN,
+  };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action !== "youtube_transcript:add_active_tab") {
+    return false;
+  }
+
+  authTokenReady
+    .then(() => ContextEngineYouTubeTranscriptBackground.addActiveTabTranscript({
+      apiBase: API_BASE,
+      authHeaders,
+      collection: message.collection,
+      tabId: message.tabId,
+      url: message.url,
+    }))
+    .then(sendResponse)
+    .catch((error) => {
+      const videoId = ContextEngineYouTubeTranscriptShared.extractVideoId(message.url || "") || "";
+      sendResponse({
+        success: false,
+        transcriptResult: ContextEngineYouTubeTranscriptShared.createTranscriptFailureResult({
+          videoId,
+          code: "upstream_error",
+          error: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          method: "background-message",
+        }),
+      });
+    });
+
+  return true;
+});
 
 // Create context menus on install
 chrome.runtime.onInstalled.addListener(() => {
@@ -24,13 +85,14 @@ async function getActiveCollection() {
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  await authTokenReady;
   const collection = await getActiveCollection();
 
   if (info.menuItemId === "add-selection" && info.selectionText) {
     try {
       const resp = await fetch(`${API_BASE}/add`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           text: info.selectionText,
           collection,
@@ -59,7 +121,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       if (result.result) {
         const resp = await fetch(`${API_BASE}/add`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             text: result.result,
             collection,

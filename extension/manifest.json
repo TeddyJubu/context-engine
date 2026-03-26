@@ -3,8 +3,8 @@
   "name": "Context Engine",
   "version": "1.0.0",
   "description": "Capture web docs and make them searchable by coding agents",
-  "permissions": ["activeTab", "contextMenus", "storage"],
-  "host_permissions": ["http://localhost:11811/*"],
+  "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
+  "host_permissions": ["http://localhost:11811/*", "http://127.0.0.1:11811/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -26,6 +26,23 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "features/youtube-transcript/shared/result.js",
+        "features/youtube-transcript/shared/url.js",
+        "features/youtube-transcript/domain/transcript.js",
+        "features/youtube-transcript/background/page-extractor.js"
+      ],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://music.youtube.com/*",
+        "https://youtu.be/*"
+      ]
     }
   ]
 }

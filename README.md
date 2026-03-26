@@ -13,7 +13,8 @@ Chrome Extension  →  FastAPI Server (localhost:11811)  →  MCP Server  →  V
 ## Features
 
 - **Chrome Extension** — one-click capture of any page or selection; crawl entire doc sites
-- **Semantic search** — `all-MiniLM-L6-v2` embeddings via sentence-transformers (384-dim, fully local)
+- **YouTube transcripts** — optional popup tool to add the active YouTube video's captions locally through the browser session
+- **Semantic search** — `BAAI/bge-base-en-v1.5` embeddings via sentence-transformers (768-dim, fully local)
 - **Multi-collection store** — separate zvec index per topic (e.g. `raycast-docs`, `react-docs`)
 - **Async BFS crawler** — polite, concurrent crawling of documentation sites
 - **MCP server** — plug into Claude Code, Cursor, Copilot, Continue.dev — any MCP-compatible agent
@@ -32,7 +33,7 @@ Chrome Extension (Manifest V3)
          ▼
 FastAPI Server (server.py)
   ├── Multi-collection zvec store (~/.context-engine/collections/{name}/)
-  ├── sentence-transformers all-MiniLM-L6-v2 (local, 384-dim)
+  ├── sentence-transformers BAAI/bge-base-en-v1.5 (local, 768-dim)
   ├── Async BFS web crawler (httpx + beautifulsoup4)
   └── REST API
          │ stdio
@@ -85,6 +86,12 @@ This creates a `.venv/`, installs all Python deps, and prints next steps.
 ```
 
 Verify: `curl http://localhost:11811/health`
+
+Most endpoints require an auth header:
+
+```bash
+export CONTEXT_TOKEN="$(cat ~/.context-engine/token)"
+```
 
 ### 3. Load the Chrome extension
 
@@ -168,13 +175,15 @@ If you prefer manual setup, add to your agent's MCP config:
 
 The server runs at `http://localhost:11811`.
 
+`GET /health` is unauthenticated. Collection, add, search, and crawl endpoints require `X-Context-Token: <token>`.
+
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | — | Status, collection count, model name |
 | `GET` | `/collections` | — | List all collections with doc counts |
 | `POST` | `/collections` | `{name}` | Create a collection |
 | `DELETE` | `/collections/{name}` | — | Delete a collection |
-| `POST` | `/add` | `{text, collection, source?, tags?}` | Add text (auto-chunked) |
+| `POST` | `/add` | `{text, collection, source?, tags?, source_type?, metadata?}` | Add text (auto-chunked) |
 | `POST` | `/search` | `{query, collection?, top_k?, filter_tags?}` | Semantic search |
 | `POST` | `/crawl` | `{url, collection, max_pages?, path_prefix?}` | Start async crawl |
 | `GET` | `/crawl/{task_id}` | — | Poll crawl progress |
@@ -186,26 +195,31 @@ When `collection` is omitted in `/search`, all collections are searched and resu
 ```bash
 # Create a collection
 curl -X POST localhost:11811/collections \
+  -H "X-Context-Token: $CONTEXT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name": "raycast-docs"}'
 
 # Add a snippet
 curl -X POST localhost:11811/add \
+  -H "X-Context-Token: $CONTEXT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"text": "Use getPreferenceValues() to read user preferences.", "collection": "raycast-docs", "source": "https://developers.raycast.com"}'
 
 # Search
 curl -X POST localhost:11811/search \
+  -H "X-Context-Token: $CONTEXT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"query": "how do I read user preferences", "collection": "raycast-docs"}'
 
 # Crawl an entire doc site
 curl -X POST localhost:11811/crawl \
+  -H "X-Context-Token: $CONTEXT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"url": "https://developers.raycast.com/basics/getting-started", "collection": "raycast-docs", "max_pages": 50}'
 
 # Poll crawl status
-curl localhost:11811/crawl/{task_id}
+curl localhost:11811/crawl/{task_id} \
+  -H "X-Context-Token: $CONTEXT_TOKEN"
 ```
 
 ---
@@ -232,15 +246,24 @@ add_memory("Always use useNavigation for stack-based navigation", collection="ra
 
 The popup gives you full control:
 
-- **Status dot** — green when the server is reachable, red when offline
+- **Status badge** — shows connected, auth-needed, or offline state
 - **Collection picker** — switch between collections or create new ones
 - **Add this page** — extracts and indexes the current page's main content
 - **Add selection** — indexes only the text you've highlighted
+- **YouTube Transcript** — extracts captions from the active YouTube video tab and stores them as `youtube_transcript` context
 - **Crawl site** — BFS crawl from the current URL up to N pages, with live progress
 
 Right-click context menus:
 - **Add selection to Context Engine** — on any selected text
 - **Add page to Context Engine** — on any page
+
+If the server asks for auth, paste the token from `~/.context-engine/token` into the popup's auth card and save it once.
+
+### YouTube transcript notes
+
+- Open a supported YouTube video tab, choose a collection, then click **Add transcript** in the popup.
+- Transcript extraction stays local to the extension and uses the browser's live YouTube session.
+- Successful items are stored with `source_type: youtube_transcript` and metadata including video id, title, URL, language, generated/manual caption status, and extraction method.
 
 ---
 
@@ -252,7 +275,7 @@ Right-click context menus:
 - Strips `nav`, `footer`, `header`, `aside`, `script`, `style`, `svg`
 - Follows only same-domain links within the specified path prefix
 - Default `max_pages`: 200
-- Each page is chunked (~400 chars), embedded, and deduplicated before insert
+- Each page is chunked with the recursive splitter (`2048` chars with `200` char overlap by default), embedded, and deduplicated before insert
 
 ---
 
@@ -260,7 +283,7 @@ Right-click context menus:
 
 Collections are stored at `~/.context-engine/collections/{name}/` as zvec indexes.
 
-Each document stores: `hash`, `text`, `source`, `tags`, `timestamp`, and a 384-dim float32 embedding.
+Each document stores: `hash`, `text`, `source`, `tags`, `timestamp`, `source_type`, optional transcript metadata, and a 768-dim float32 embedding.
 
 Deduplication is done by SHA-1 hash of the text — identical chunks are skipped on re-add.
 
@@ -289,5 +312,5 @@ mcp>=1.0
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CONTEXT_ENGINE_DIR` | `~/.context-engine` | Data directory |
-| `EMBED_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
+| `EMBED_MODEL` | `BAAI/bge-base-en-v1.5` | Sentence-transformers model |
 | `CONTEXT_TOP_K` | `8` | Default search result count |

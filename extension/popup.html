@@ -46,6 +46,25 @@
     </button>
   </div>
 
+  <div class="card hidden" id="card-auth">
+    <label for="auth-token-input">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1l8 4v6c0 5-3.5 9.74-8 11-4.5-1.26-8-6-8-11V5l8-4z"/>
+        <path d="M9.5 12.5l1.75 1.75L15.5 10"/>
+      </svg>
+      Extension Auth
+    </label>
+    <p class="auth-helper-text" id="auth-helper-text">Paste the token from <code>~/.context-engine/token</code> to unlock collections and writes.</p>
+    <div class="auth-token-row">
+      <input id="auth-token-input" type="text" placeholder="Paste X-Context-Token" spellcheck="false" autocomplete="off">
+      <button id="save-auth-token-btn" class="btn-create">Save</button>
+    </div>
+    <div class="auth-actions">
+      <button id="clear-auth-token-btn" class="btn-auth-secondary">Clear</button>
+      <span id="auth-status-text" class="auth-status-text"></span>
+    </div>
+  </div>
+
   <div class="card" id="card-collection">
     <label for="collection-select">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -124,6 +143,32 @@
     </button>
   </div>
 
+  <div class="card" id="card-youtube">
+    <label>
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46A2.78 2.78 0 0 0 1.46 6.42 29.94 29.94 0 0 0 1 12a29.94 29.94 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.94 1.96C5.12 20 12 20 12 20s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96A29.94 29.94 0 0 0 23 12a29.94 29.94 0 0 0-.46-5.58z"/>
+        <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/>
+      </svg>
+      YouTube Transcript
+    </label>
+    <div class="youtube-panel-head">
+      <span id="youtube-status-chip" class="youtube-chip youtube-chip-muted">Inactive</span>
+      <span id="youtube-helper-text" class="youtube-helper-text">Open a YouTube video tab to enable transcript capture.</span>
+    </div>
+    <div id="youtube-video-meta" class="youtube-video-meta hidden">
+      <div id="youtube-video-title" class="youtube-video-title"></div>
+      <div id="youtube-video-url" class="youtube-video-url"></div>
+    </div>
+    <button id="add-youtube-transcript-btn" class="btn-action btn-youtube" disabled>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46A2.78 2.78 0 0 0 1.46 6.42 29.94 29.94 0 0 0 1 12a29.94 29.94 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.94 1.96C5.12 20 12 20 12 20s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96A29.94 29.94 0 0 0 23 12a29.94 29.94 0 0 0-.46-5.58z"/>
+        <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/>
+      </svg>
+      <span class="btn-label">Add transcript</span>
+      <span class="spinner hidden"></span>
+    </button>
+  </div>
+
   <div class="card" id="card-crawl">
     <label for="crawl-url">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -163,6 +208,10 @@
 
   <div id="toast-container" class="toast-container"></div>
 
+  <script src="config.js"></script>
+  <script src="features/youtube-transcript/shared/result.js"></script>
+  <script src="features/youtube-transcript/shared/url.js"></script>
+  <script src="features/youtube-transcript/ui/popup-panel.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

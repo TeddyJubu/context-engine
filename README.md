@@ -14,7 +14,7 @@ Chrome Extension  →  FastAPI Server (localhost:11811)  →  MCP Server  →  V
 
 - **Chrome Extension** — one-click capture of any page or selection; crawl entire doc sites
 - **YouTube transcripts** — optional popup tool to add the active YouTube video's captions locally through the browser session
-- **Semantic search** — `all-MiniLM-L6-v2` embeddings via sentence-transformers (384-dim, fully local)
+- **Semantic search** — `BAAI/bge-base-en-v1.5` embeddings via sentence-transformers (768-dim, fully local)
 - **Multi-collection store** — separate zvec index per topic (e.g. `raycast-docs`, `react-docs`)
 - **Async BFS crawler** — polite, concurrent crawling of documentation sites
 - **MCP server** — plug into Claude Code, Cursor, Copilot, Continue.dev — any MCP-compatible agent
@@ -33,7 +33,7 @@ Chrome Extension (Manifest V3)
          ▼
 FastAPI Server (server.py)
   ├── Multi-collection zvec store (~/.context-engine/collections/{name}/)
-  ├── sentence-transformers all-MiniLM-L6-v2 (local, 384-dim)
+  ├── sentence-transformers BAAI/bge-base-en-v1.5 (local, 768-dim)
   ├── Async BFS web crawler (httpx + beautifulsoup4)
   └── REST API
          │ stdio
@@ -169,44 +169,57 @@ If you prefer manual setup, add to your agent's MCP config:
 
 The server runs at `http://localhost:11811`.
 
-| Method | Path | Body | Description |
-|--------|------|------|-------------|
-| `GET` | `/health` | — | Status, collection count, model name |
-| `GET` | `/collections` | — | List all collections with doc counts |
-| `POST` | `/collections` | `{name}` | Create a collection |
-| `DELETE` | `/collections/{name}` | — | Delete a collection |
-| `POST` | `/add` | `{text, collection, source?, tags?, source_type?, metadata?}` | Add text (auto-chunked) |
-| `POST` | `/search` | `{query, collection?, top_k?, filter_tags?}` | Semantic search |
-| `POST` | `/crawl` | `{url, collection, max_pages?, path_prefix?}` | Start async crawl |
-| `GET` | `/crawl/{task_id}` | — | Poll crawl progress |
+Most endpoints require the `X-Context-Token` header. The token is auto-generated on first run and stored at `~/.context-engine/token`. Retrieve it with:
+
+```bash
+cat ~/.context-engine/token
+```
+
+| Method | Path | Auth | Body | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/health` | No | — | Status, collection count, model name |
+| `GET` | `/collections` | Yes | — | List all collections with doc counts |
+| `POST` | `/collections` | Yes | `{name}` | Create a collection |
+| `DELETE` | `/collections/{name}` | Yes | — | Delete a collection |
+| `POST` | `/add` | Yes | `{text, collection, source?, tags?, source_type?, metadata?}` | Add text (auto-chunked) |
+| `POST` | `/search` | Yes | `{query, collection?, top_k?, filter_tags?}` | Semantic search |
+| `POST` | `/crawl` | Yes | `{url, collection, max_pages?, path_prefix?}` | Start async crawl |
+| `GET` | `/crawl/{task_id}` | Yes | — | Poll crawl progress |
 
 When `collection` is omitted in `/search`, all collections are searched and results merged by score.
 
 ### Quick examples
 
 ```bash
+# Set TOKEN for convenience (replace with your actual token from ~/.context-engine/token)
+TOKEN=$(cat ~/.context-engine/token)
+
 # Create a collection
 curl -X POST localhost:11811/collections \
   -H 'Content-Type: application/json' \
+  -H "X-Context-Token: $TOKEN" \
   -d '{"name": "raycast-docs"}'
 
 # Add a snippet
 curl -X POST localhost:11811/add \
   -H 'Content-Type: application/json' \
+  -H "X-Context-Token: $TOKEN" \
   -d '{"text": "Use getPreferenceValues() to read user preferences.", "collection": "raycast-docs", "source": "https://developers.raycast.com"}'
 
 # Search
 curl -X POST localhost:11811/search \
   -H 'Content-Type: application/json' \
+  -H "X-Context-Token: $TOKEN" \
   -d '{"query": "how do I read user preferences", "collection": "raycast-docs"}'
 
 # Crawl an entire doc site
 curl -X POST localhost:11811/crawl \
   -H 'Content-Type: application/json' \
+  -H "X-Context-Token: $TOKEN" \
   -d '{"url": "https://developers.raycast.com/basics/getting-started", "collection": "raycast-docs", "max_pages": 50}'
 
 # Poll crawl status
-curl localhost:11811/crawl/{task_id}
+curl -H "X-Context-Token: $TOKEN" localhost:11811/crawl/{task_id}
 ```
 
 ---
@@ -268,7 +281,7 @@ Right-click context menus:
 
 Collections are stored at `~/.context-engine/collections/{name}/` as zvec indexes.
 
-Each document stores: `hash`, `text`, `source`, `tags`, `timestamp`, and a 384-dim float32 embedding.
+Each document stores: `hash`, `text`, `source`, `tags`, `timestamp`, and a 768-dim float32 embedding.
 
 Deduplication is done by SHA-1 hash of the text — identical chunks are skipped on re-add.
 
@@ -297,5 +310,9 @@ mcp>=1.0
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CONTEXT_ENGINE_DIR` | `~/.context-engine` | Data directory |
-| `EMBED_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
+| `EMBED_MODEL` | `BAAI/bge-base-en-v1.5` | Sentence-transformers model |
+| `CONTEXT_ENGINE_EMBED_DIM` | `768` | Embedding dimension (must match model) |
 | `CONTEXT_TOP_K` | `8` | Default search result count |
+| `CONTEXT_ENGINE_CHUNK_SIZE` | `2048` | Max chunk size in characters |
+| `CONTEXT_ENGINE_CHUNK_OVERLAP` | `200` | Overlap between chunks in characters (clamped to CHUNK_SIZE - 1) |
+| `CONTEXT_ENGINE_TOKEN` | *(auto-generated)* | Auth token for write endpoints (overrides `~/.context-engine/token`) |

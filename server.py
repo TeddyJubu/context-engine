@@ -19,7 +19,7 @@ from typing import Any, Optional
 import zvec
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from context_engine_config import (
     AUTH_HEADER,
     AUTH_TOKEN,
@@ -87,7 +87,7 @@ class AddRequest(BaseModel):
     text: str
     collection: str
     source: str = "manual"
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     source_type: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
 
@@ -95,7 +95,7 @@ class SearchRequest(BaseModel):
     query: str
     collection: Optional[str] = None
     top_k: int = DEFAULT_K
-    filter_tags: list[str] = []
+    filter_tags: list[str] = Field(default_factory=list)
 
 class CrawlRequest(BaseModel):
     url: str
@@ -118,6 +118,8 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
     Size and overlap are in characters (~4 chars per token).
     Default: ~512 tokens chunk, ~50 tokens overlap.
     """
+    # Clamp overlap so range(..., size - overlap) always has a positive step
+    overlap = min(overlap, size - 1)
     separators = ["\n\n", "\n", " "]
 
     def _split(text: str, seps: list[str]) -> list[str]:
@@ -176,7 +178,7 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
         if space_idx > 0:
             overlap_text = overlap_text[space_idx + 1:]
         combined = (overlap_text + " " + raw_chunks[i]).strip()
-        result.append(combined)
+        result.append(combined[:size] if len(combined) > size else combined)
 
     return result
 

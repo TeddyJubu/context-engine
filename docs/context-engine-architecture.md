@@ -44,16 +44,16 @@ flowchart LR
       S[FastAPI Server\nserver.py]
       CR[Async Crawler\ncrawler.py]
       Z[zvec Collections\n~/.context-engine/collections]
-      M[SentenceTransformer\nall-MiniLM-L6-v2]
+      M[SentenceTransformer\nBAAI/bge-base-en-v1.5]
     end
 
     subgraph MCP
       MS[mcp_server.py]
     end
 
-    E -->|HTTP localhost:11811| S
+    E -->|HTTP localhost:11811\n+ X-Context-Token| S
     A -->|stdio MCP| MS
-    MS -->|HTTP localhost:11811| S
+    MS -->|HTTP localhost:11811\n+ X-Context-Token| S
     S --> Z
     S --> M
     S --> CR
@@ -233,9 +233,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    T[Raw text] --> C[chunk_text size≈400]
+    T[Raw text] --> C[chunk_text size≈2048]
     C --> H[fact_hash SHA-1 prefix]
-    C --> E[embedding vector 384-dim fp32]
+    C --> E[embedding vector 768-dim fp32]
     H --> D[Doc fields]
     E --> D
     D --> Z[zvec collection on disk]
@@ -246,10 +246,10 @@ flowchart LR
 - Root data directory: `~/.context-engine/`
 - Collection directory: `~/.context-engine/collections/{collection-name}/`
 - Collection schema:
-  - string fields: `hash`, `text`, `source`, `agent`
+  - string fields: `hash`, `text`, `source`, `agent`, `source_type`, `metadata_json`, `embed_model`
   - array field: `tags`
   - int field: `ts`
-  - vector field: `embedding` (384 dims)
+  - vector field: `embedding` (768 dims)
 
 ## Important design characteristics
 

@@ -19,6 +19,13 @@ chrome.storage.local.get(["authToken"], (data) => {
   }
 });
 
+// Keep AUTH_TOKEN in sync with changes to chrome.storage.local
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.authToken) {
+    AUTH_TOKEN = changes.authToken.newValue || "";
+  }
+});
+
 function authHeaders(extra = {}) {
   return {
     ...extra,

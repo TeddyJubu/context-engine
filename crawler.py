@@ -93,6 +93,10 @@ async def crawl_site(
     chunk_fn=None,
 ):
     """BFS crawl a site, chunking and embedding each page into a collection."""
+    if chunk_fn is None:
+        raise ValueError("crawl_site: chunk_fn parameter cannot be None")
+    if add_fn is None:
+        raise ValueError("crawl_site: add_fn parameter cannot be None")
     parsed = urlparse(url)
     domain = parsed.netloc
     if path_prefix is None:

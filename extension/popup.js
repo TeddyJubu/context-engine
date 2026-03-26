@@ -10,13 +10,13 @@ let API = CONFIG.API_BASE;
 let AUTH_HEADER = CONFIG.AUTH_HEADER;
 let AUTH_TOKEN = CONFIG.AUTH_TOKEN;
 
-// Load persisted token
-(async () => {
+// Load persisted token (called once before init so all requests use the stored token)
+async function loadStoredToken() {
   const stored = await chrome.storage.local.get(["authToken"]);
   if (stored.authToken) {
     AUTH_TOKEN = stored.authToken;
   }
-})();
+}
 
 function authHeaders(extra = {}) {
   return {
@@ -53,6 +53,11 @@ const cardCollection = document.getElementById("card-collection");
 const cardActions = document.getElementById("card-actions");
 const cardYouTube = document.getElementById("card-youtube");
 const cardCrawl = document.getElementById("card-crawl");
+const cardToken = document.getElementById("card-token");
+const tokenInput = document.getElementById("token-input");
+const saveTokenBtn = document.getElementById("save-token-btn");
+const tokenAuthMsg = document.getElementById("token-auth-msg");
+const tokenInputError = document.getElementById("token-input-error");
 const emptyCreateBtn = document.getElementById("empty-create-btn");
 const youtubeStatusChip = document.getElementById("youtube-status-chip");
 const youtubeHelperText = document.getElementById("youtube-helper-text");
@@ -170,6 +175,13 @@ async function loadCollections() {
     const r = await fetch(`${API}/collections`, {
       headers: authHeaders(),
     });
+    if (!r.ok) {
+      if (r.status === 401) {
+        showTokenCard("Authentication required. Paste the token from ~/.context-engine/token.");
+      }
+      return;
+    }
+    hideTokenCard();
     const data = await r.json();
     collSelect.innerHTML = "";
     if (data.length === 0) {
@@ -195,6 +207,34 @@ async function loadCollections() {
 
 collSelect.addEventListener("change", () => {
   chrome.storage.local.set({ activeCollection: collSelect.value });
+});
+
+// ===== Token Card =====
+
+function showTokenCard(message = "") {
+  cardToken.classList.remove("hidden");
+  tokenAuthMsg.textContent = message;
+}
+
+function hideTokenCard() {
+  cardToken.classList.add("hidden");
+  tokenAuthMsg.textContent = "";
+  tokenInputError.classList.add("hidden");
+}
+
+saveTokenBtn.addEventListener("click", async () => {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    tokenInputError.textContent = "Token cannot be empty";
+    tokenInputError.classList.remove("hidden");
+    return;
+  }
+  tokenInputError.classList.add("hidden");
+  await chrome.storage.local.set({ authToken: token });
+  AUTH_TOKEN = token;
+  tokenInput.value = "";
+  hideTokenCard();
+  await loadCollections();
 });
 
 // ===== New Collection =====
@@ -550,6 +590,7 @@ crawlBtn.addEventListener("click", async () => {
 // ===== Init =====
 
 (async () => {
+  await loadStoredToken();
   if (await checkServer()) {
     await loadCollections();
   }

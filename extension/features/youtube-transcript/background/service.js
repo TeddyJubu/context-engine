@@ -22,6 +22,18 @@
     "features/youtube-transcript/background/page-extractor.js",
   ];
 
+  async function getResponseError(response) {
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload === "object") {
+        if (payload.detail) return String(payload.detail);
+        if (payload.error) return String(payload.error);
+      }
+    } catch {}
+
+    return "Context Engine add request failed with HTTP " + response.status + ".";
+  }
+
   function validateActiveTab(source) {
     const url = source && source.url ? source.url : "";
     const videoId = extractVideoId(url);
@@ -83,12 +95,16 @@
       });
 
       if (!response.ok) {
+        const errorMessage = await getResponseError(response);
         return {
           success: false,
+          authFailed: response.status === 401,
+          statusCode: response.status,
+          error: errorMessage,
           transcriptResult: createTranscriptFailureResult({
             videoId: validation.videoId,
             code: "upstream_error",
-            error: "Context Engine add request failed with HTTP " + response.status + ".",
+            error: errorMessage,
             retryable: response.status >= 500,
             method: "background-add",
           }),

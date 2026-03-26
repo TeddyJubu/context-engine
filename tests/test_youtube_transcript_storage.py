@@ -247,6 +247,37 @@ class YouTubeTranscriptStorageTests(unittest.TestCase):
         fetched = coll.fetch(ids=["legacy-name-doc"])["legacy-name-doc"]
         self.assertEqual(fetched.fields["text"], "Legacy collection naming")
 
+    def test_add_fact_preserves_near_duplicate_status(self):
+        original_chunk_text = server.chunk_text
+        original_ensure_collection = server.ensure_collection
+        original_add_to_collection = server.add_to_collection
+
+        try:
+            server.chunk_text = lambda text, size, overlap: ["chunk-a", "chunk-b"]
+            server.ensure_collection = lambda name: object()
+            calls = iter([
+                {"status": "near_duplicate", "hash": "hash-a", "similar_score": 0.97},
+                {"status": "duplicate", "hash": "hash-b"},
+            ])
+            server.add_to_collection = lambda *args, **kwargs: next(calls)
+
+            response = server.add_fact(
+                server.AddRequest(
+                    text="Some text",
+                    collection="video-notes",
+                    source="manual",
+                ),
+                None,
+            )
+
+            self.assertEqual(response["status"], "near_duplicate")
+            self.assertEqual(response["hash"], "hash-b")
+            self.assertEqual(response["near_duplicate"]["similar_score"], 0.97)
+        finally:
+            server.chunk_text = original_chunk_text
+            server.ensure_collection = original_ensure_collection
+            server.add_to_collection = original_add_to_collection
+
 
 if __name__ == "__main__":
     unittest.main()

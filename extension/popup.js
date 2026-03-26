@@ -84,6 +84,14 @@ let serverAuthorized = false;
 let authStatusMessage = "";
 let activeTabSnapshot = null;
 
+if (!youtubePanelUI) {
+  cardYouTube.classList.add("disabled-card");
+  addYouTubeTranscriptBtn.disabled = true;
+  youtubeStatusChip.textContent = "Unavailable";
+  youtubeStatusChip.className = "youtube-chip youtube-chip-muted";
+  youtubeHelperText.textContent = "YouTube transcript tools are unavailable in this build.";
+}
+
 // ===== SVG Icon Helpers =====
 
 const icons = {
@@ -170,7 +178,7 @@ function applyAccessState() {
 
   addPageBtn.disabled = !interactive;
   addSelBtn.disabled = !interactive;
-  addYouTubeTranscriptBtn.disabled = !interactive;
+  addYouTubeTranscriptBtn.disabled = !interactive || !youtubePanelUI;
   crawlBtn.disabled = !interactive;
 
   updateAuthCard();
@@ -564,6 +572,11 @@ async function refreshYouTubePanel() {
 }
 
 addYouTubeTranscriptBtn.addEventListener("click", async () => {
+  if (!youtubePanelUI) {
+    showMessage("YouTube transcript tools are unavailable in this build.", "error");
+    return;
+  }
+
   const tab = await getActiveTab();
   activeTabSnapshot = tab;
 
@@ -590,6 +603,12 @@ addYouTubeTranscriptBtn.addEventListener("click", async () => {
       tabId: tab.id,
       url: tab.url,
     });
+
+    if (response && response.authFailed) {
+      handleUnauthorized(response.error || "Unauthorized");
+      showMessage(response.error || "Authorization is required to add transcripts.", "error");
+      return;
+    }
 
     showMessage(
       youtubePanelUI.formatResultMessage(response),

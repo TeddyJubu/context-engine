@@ -490,6 +490,7 @@
     return error.code === "rate_limited"
       || error.code === "bot_challenge"
       || error.code === "login_required"
+      || error.code === "no_captions"
       || error.code === "upstream_error";
   }
 

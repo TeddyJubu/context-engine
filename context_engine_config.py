@@ -7,6 +7,10 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
+class ConfigError(RuntimeError):
+    pass
+
+
 def _env_int(name: str, default: int, minimum: int = 1, maximum: int = 65535) -> int:
     raw = os.environ.get(name)
     if raw is None:
@@ -70,18 +74,28 @@ def _load_or_create_token() -> str:
     env_token = os.environ.get("CONTEXT_ENGINE_TOKEN")
     if env_token:
         return env_token
-    if TOKEN_FILE.exists():
-        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+
+    try:
+        token_exists = TOKEN_FILE.exists()
+    except OSError as exc:
+        raise ConfigError(f"Could not access token file at {TOKEN_FILE}: {exc}") from exc
+
+    if token_exists:
+        try:
+            token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ConfigError(f"Could not read token file at {TOKEN_FILE}: {exc}") from exc
         if token:
             return token
+
     import secrets
     token = secrets.token_urlsafe(32)
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
     try:
+        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
         TOKEN_FILE.chmod(0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        raise ConfigError(f"Could not create token file at {TOKEN_FILE}: {exc}") from exc
     return token
 
 

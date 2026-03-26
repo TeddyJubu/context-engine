@@ -42,7 +42,7 @@ COLLECTION_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 MIGRATION_BATCH_SIZE = 256
 MIGRATION_TMP_SUFFIX = ".tmp-migration"
 MIGRATION_BAK_SUFFIX = ".bak"
-OPTIONAL_SCHEMA_FIELD_NAMES = {"source_type", "metadata_json"}
+OPTIONAL_SCHEMA_FIELD_NAMES = {"source_type", "metadata_json", "embed_model"}
 
 COLL_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -536,6 +536,8 @@ def add_fact(req: AddRequest, _auth: None = Depends(require_write_token)):
     chunks = chunk_text(req.text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP)
     metadata_json = serialize_metadata(req.metadata)
     added = 0
+    saw_near_duplicate = False
+    near_duplicate_info = None
     last_hash = ""
     for chunk in chunks:
         result = add_to_collection(
@@ -548,8 +550,15 @@ def add_fact(req: AddRequest, _auth: None = Depends(require_write_token)):
         )
         if result["status"] == "added":
             added += 1
+        elif result["status"] == "near_duplicate":
+            saw_near_duplicate = True
+            near_duplicate_info = {"similar_score": result.get("similar_score")}
         last_hash = result["hash"]
-    return {"status": "added" if added > 0 else "duplicate", "chunks": len(chunks), "added": added, "hash": last_hash}
+    status = "added" if added > 0 else "near_duplicate" if saw_near_duplicate else "duplicate"
+    response = {"status": status, "chunks": len(chunks), "added": added, "hash": last_hash}
+    if near_duplicate_info and near_duplicate_info.get("similar_score") is not None:
+        response["near_duplicate"] = near_duplicate_info
+    return response
 
 @app.post("/search")
 def search(req: SearchRequest, _auth: None = Depends(require_write_token)):

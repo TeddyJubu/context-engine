@@ -534,7 +534,7 @@ input[type="text"].input-invalid {
 }
 
 .auth-helper-text code {
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
   font-size: 11px;
   color: var(--text);
 }

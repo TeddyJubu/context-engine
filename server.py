@@ -36,21 +36,13 @@ from context_engine_config import (
     SERVER_PORT,
 )
 
-import sys
-
-def get_model_cache_dir() -> Optional[str]:
-    """Return bundled model cache path when running inside a PyInstaller .app, else None."""
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, "sentence_transformers_cache")
-    return None
-
 # ── Config ────────────────────────────────────────────────────────────────────
 DEFAULT_K = DEFAULT_TOP_K
 COLLECTION_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 MIGRATION_BATCH_SIZE = 256
 MIGRATION_TMP_SUFFIX = ".tmp-migration"
 MIGRATION_BAK_SUFFIX = ".bak"
-OPTIONAL_SCHEMA_FIELD_NAMES = {"source_type", "metadata_json", "embed_model"}
+OPTIONAL_SCHEMA_FIELD_NAMES = {"source_type", "metadata_json"}
 
 COLL_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -126,12 +118,12 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
     Size and overlap are in characters (~4 chars per token).
     Default: ~512 tokens chunk, ~50 tokens overlap.
     """
-    safe_size = max(size, 1)
-    safe_overlap = max(0, min(overlap, safe_size - 1))
+    # Clamp overlap so range(..., size - overlap) always has a positive step
+    overlap = min(overlap, size - 1)
     separators = ["\n\n", "\n", " "]
 
     def _split(text: str, seps: list[str]) -> list[str]:
-        if len(text) <= safe_size:
+        if len(text) <= size:
             return [text] if text.strip() else []
 
         sep = ""
@@ -142,9 +134,8 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
 
         if not sep:
             chunks = []
-            step = max(1, safe_size - safe_overlap)
-            for i in range(0, len(text), step):
-                chunk = text[i:i + safe_size].strip()
+            for i in range(0, len(text), size - overlap):
+                chunk = text[i:i + size].strip()
                 if chunk:
                     chunks.append(chunk)
             return chunks
@@ -156,12 +147,12 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
         current = ""
         for part in parts:
             candidate = (current + sep + part).strip() if current else part.strip()
-            if len(candidate) <= safe_size:
+            if len(candidate) <= size:
                 current = candidate
             else:
                 if current:
                     chunks.append(current)
-                if len(part) > safe_size:
+                if len(part) > size:
                     chunks.extend(_split(part.strip(), remaining_seps))
                     current = ""
                 else:
@@ -174,22 +165,20 @@ def chunk_text(text: str, size: int = 2048, overlap: int = 200) -> list[str]:
     raw_chunks = _split(text, separators)
 
     if not raw_chunks:
-        return [text[:safe_size]] if text.strip() else []
+        return [text[:size]] if text.strip() else []
 
-    if safe_overlap <= 0 or len(raw_chunks) <= 1:
+    if overlap <= 0 or len(raw_chunks) <= 1:
         return raw_chunks
 
     result = [raw_chunks[0]]
     for i in range(1, len(raw_chunks)):
         prev = raw_chunks[i - 1]
-        overlap_text = prev[-safe_overlap:] if len(prev) > safe_overlap else prev
+        overlap_text = prev[-overlap:] if len(prev) > overlap else prev
         space_idx = overlap_text.find(" ")
         if space_idx > 0:
             overlap_text = overlap_text[space_idx + 1:]
         combined = (overlap_text + " " + raw_chunks[i]).strip()
-        if len(combined) > safe_size:
-            combined = combined[-safe_size:]
-        result.append(combined)
+        result.append(combined[:size] if len(combined) > size else combined)
 
     return result
 
@@ -203,20 +192,6 @@ def validate_collection_name(name: str) -> str:
     if not COLLECTION_NAME_RE.fullmatch(normalized):
         raise HTTPException(400, "Invalid collection name. Use lowercase letters, numbers, and hyphens.")
     return normalized
-
-def resolve_existing_collection_name(name: str) -> Optional[str]:
-    raw_name = name.strip()
-    normalized = normalize_collection_name(name)
-    candidates = []
-    if raw_name:
-        candidates.append(raw_name)
-    if normalized and normalized not in candidates:
-        candidates.append(normalized)
-
-    for candidate in candidates:
-        if candidate in collections or (COLL_DIR / candidate).exists():
-            return candidate
-    return None
 
 def require_write_token(
     x_context_token: Optional[str] = Header(default=None, alias=AUTH_HEADER),
@@ -234,17 +209,8 @@ def is_visible_collection_dir(path: Path) -> bool:
 def collection_field_names(coll: zvec.Collection) -> set[str]:
     return {field.name for field in coll.schema.fields}
 
-def collection_embedding_dimension(coll: zvec.Collection) -> Optional[int]:
-    for vector in coll.schema.vectors:
-        if vector.name == "embedding":
-            return vector.dimension
-    return None
-
 def collection_needs_schema_upgrade(coll: zvec.Collection) -> bool:
-    return (
-        not OPTIONAL_SCHEMA_FIELD_NAMES.issubset(collection_field_names(coll))
-        or collection_embedding_dimension(coll) != EMBED_DIM
-    )
+    return not OPTIONAL_SCHEMA_FIELD_NAMES.issubset(collection_field_names(coll))
 
 def iter_batches(items: list[str], batch_size: int):
     for index in range(0, len(items), batch_size):
@@ -266,18 +232,9 @@ def parse_metadata_json(value: Optional[str]) -> Optional[dict[str, Any]]:
 
 def rebuild_collection_doc(existing_doc: zvec.Doc) -> zvec.Doc:
     fields = dict(existing_doc.fields or {})
-    vectors = dict(existing_doc.vectors or {})
-    stored_embedding = vectors.get("embedding")
-    try:
-        embedding = list(stored_embedding) if stored_embedding is not None else None
-    except TypeError:
-        embedding = None
-    reembedded = embedding is None or len(embedding) != EMBED_DIM
-    if reembedded:
-        embedding = embed(fields.get("text", ""))
     return zvec.Doc(
         id=str(existing_doc.id),
-        vectors={"embedding": embedding},
+        vectors=dict(existing_doc.vectors or {}),
         fields={
             "hash": fields.get("hash", str(existing_doc.id)),
             "text": fields.get("text", ""),
@@ -287,7 +244,7 @@ def rebuild_collection_doc(existing_doc: zvec.Doc) -> zvec.Doc:
             "ts": fields.get("ts"),
             "source_type": fields.get("source_type"),
             "metadata_json": fields.get("metadata_json"),
-            "embed_model": MODEL_NAME if reembedded else fields.get("embed_model"),
+            "embed_model": fields.get("embed_model"),
         },
     )
 
@@ -358,8 +315,7 @@ def open_collection_with_schema(name: str) -> zvec.Collection:
 
 def get_collection(name: str) -> zvec.Collection:
     """Lazy-open a collection by name."""
-    resolved_name = resolve_existing_collection_name(name)
-    name = resolved_name or validate_collection_name(name)
+    name = validate_collection_name(name)
     if name in collections:
         return collections[name]
     coll_path = str(COLL_DIR / name)
@@ -371,8 +327,7 @@ def get_collection(name: str) -> zvec.Collection:
 
 def ensure_collection(name: str) -> zvec.Collection:
     """Get or create a collection."""
-    resolved_name = resolve_existing_collection_name(name)
-    name = resolved_name or validate_collection_name(name)
+    name = validate_collection_name(name)
     if name in collections:
         return collections[name]
     coll_path = str(COLL_DIR / name)
@@ -450,7 +405,7 @@ async def lifespan(app: FastAPI):
 
     log.info("Loading embedding model: %s", MODEL_NAME)
     from sentence_transformers import SentenceTransformer
-    embedder = SentenceTransformer(MODEL_NAME, cache_folder=get_model_cache_dir())
+    embedder = SentenceTransformer(MODEL_NAME)
     log.info("Embedding model loaded.")
 
     # Verify model output dimension matches config
@@ -525,7 +480,7 @@ def create_collection(req: CreateCollectionRequest, _auth: None = Depends(requir
 
 @app.delete("/collections/{name}")
 def delete_collection(name: str, _auth: None = Depends(require_write_token)):
-    name = resolve_existing_collection_name(name) or validate_collection_name(name)
+    name = validate_collection_name(name)
     if name in collections:
         try:
             collections[name].optimize()
@@ -544,8 +499,6 @@ def add_fact(req: AddRequest, _auth: None = Depends(require_write_token)):
     chunks = chunk_text(req.text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP)
     metadata_json = serialize_metadata(req.metadata)
     added = 0
-    saw_near_duplicate = False
-    near_duplicate_info = None
     last_hash = ""
     for chunk in chunks:
         result = add_to_collection(
@@ -558,15 +511,8 @@ def add_fact(req: AddRequest, _auth: None = Depends(require_write_token)):
         )
         if result["status"] == "added":
             added += 1
-        elif result["status"] == "near_duplicate":
-            saw_near_duplicate = True
-            near_duplicate_info = {"similar_score": result.get("similar_score")}
         last_hash = result["hash"]
-    status = "added" if added > 0 else "near_duplicate" if saw_near_duplicate else "duplicate"
-    response = {"status": status, "chunks": len(chunks), "added": added, "hash": last_hash}
-    if near_duplicate_info and near_duplicate_info.get("similar_score") is not None:
-        response["near_duplicate"] = near_duplicate_info
-    return response
+    return {"status": "added" if added > 0 else "duplicate", "chunks": len(chunks), "added": added, "hash": last_hash}
 
 @app.post("/search")
 def search(req: SearchRequest, _auth: None = Depends(require_write_token)):
@@ -575,9 +521,8 @@ def search(req: SearchRequest, _auth: None = Depends(require_write_token)):
 
     target_collections = {}
     if req.collection:
-        coll = get_collection(req.collection)
-        cname = resolve_existing_collection_name(req.collection) or validate_collection_name(req.collection)
-        target_collections[cname] = coll
+        cname = validate_collection_name(req.collection)
+        target_collections[cname] = get_collection(cname)
     else:
         target_collections = dict(collections)
 

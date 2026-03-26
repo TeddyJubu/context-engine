@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 
-import logging
 import os
 from pathlib import Path
-
-log = logging.getLogger(__name__)
-
-
-class ConfigError(RuntimeError):
-    pass
 
 
 def _env_int(name: str, default: int, minimum: int = 1, maximum: int = 65535) -> int:
@@ -32,28 +25,6 @@ def _env_list(name: str, default: list[str]) -> list[str]:
     return values or default
 
 
-def _env_float(name: str, default: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        log.warning("Invalid %s value %r; using default %s", name, raw, default)
-        return default
-    if value < minimum or value > maximum:
-        log.warning(
-            "Out-of-range %s value %r; expected between %s and %s. Using default %s",
-            name,
-            raw,
-            minimum,
-            maximum,
-            default,
-        )
-        return default
-    return value
-
-
 DATA_DIR = Path(os.environ.get("CONTEXT_ENGINE_DIR", Path.home() / ".context-engine")).expanduser()
 COLL_DIR = DATA_DIR / "collections"
 
@@ -74,28 +45,18 @@ def _load_or_create_token() -> str:
     env_token = os.environ.get("CONTEXT_ENGINE_TOKEN")
     if env_token:
         return env_token
-
-    try:
-        token_exists = TOKEN_FILE.exists()
-    except OSError as exc:
-        raise ConfigError(f"Could not access token file at {TOKEN_FILE}: {exc}") from exc
-
-    if token_exists:
-        try:
-            token = TOKEN_FILE.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise ConfigError(f"Could not read token file at {TOKEN_FILE}: {exc}") from exc
+    if TOKEN_FILE.exists():
+        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
         if token:
             return token
-
     import secrets
     token = secrets.token_urlsafe(32)
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
     try:
-        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
         TOKEN_FILE.chmod(0o600)
-    except OSError as exc:
-        raise ConfigError(f"Could not create token file at {TOKEN_FILE}: {exc}") from exc
+    except OSError:
+        pass
     return token
 
 
@@ -114,4 +75,4 @@ CHUNK_SIZE = _env_int("CONTEXT_ENGINE_CHUNK_SIZE", 2048, minimum=256, maximum=81
 _CHUNK_OVERLAP_RAW = _env_int("CONTEXT_ENGINE_CHUNK_OVERLAP", 200, minimum=0, maximum=2048)
 CHUNK_OVERLAP = min(_CHUNK_OVERLAP_RAW, CHUNK_SIZE - 1)
 
-DEDUP_SIMILARITY_THRESHOLD = _env_float("CONTEXT_ENGINE_DEDUP_THRESHOLD", 0.95, 0.0, 1.0)
+DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("CONTEXT_ENGINE_DEDUP_THRESHOLD", "0.95"))

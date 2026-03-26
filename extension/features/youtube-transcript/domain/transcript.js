@@ -33,12 +33,12 @@
     const videoId = extractVideoId(url);
 
     if (!videoId) {
-      return createTranscriptFailureResult({
-        videoId: url,
-        code: "invalid_url",
-        error: "Open a supported YouTube video page to extract a transcript.",
-        retryable: false,
-      });
+      return createTranscriptFailureResult(
+        url,
+        "invalid_url",
+        "Open a supported YouTube video page to extract a transcript.",
+        false,
+      );
     }
 
     const languages = settings.languages && settings.languages.length
@@ -53,13 +53,13 @@
       });
     } catch (error) {
       const normalized = normalizeTranscriptError(error);
-      return createTranscriptFailureResult({
+      return createTranscriptFailureResult(
         videoId,
-        code: normalized.code,
-        error: normalized.message,
-        retryable: normalized.retryable,
-        ...(normalized.method ? { method: normalized.method } : {}),
-      });
+        normalized.code,
+        normalized.message,
+        normalized.retryable,
+        normalized.method ? { method: normalized.method } : undefined,
+      );
     }
   }
 
@@ -490,7 +490,6 @@
     return error.code === "rate_limited"
       || error.code === "bot_challenge"
       || error.code === "login_required"
-      || error.code === "no_captions"
       || error.code === "upstream_error";
   }
 

@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# ── Quick Install (recommended for end users) ─────────────────────────────────
-# 1. Download Context Engine.app from the releases page
-# 2. Drag to /Applications
-# 3. Right-click -> Open (first launch only -- bypasses Gatekeeper for unsigned app)
-# 4. Enable "Open at Login" in the Settings tab
-#
-# The app bundles the Python runtime and sentence-transformers model.
-# No Python installation required.
-#
-# ── Developer / CLI Install ───────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,19 +17,14 @@ echo "Installing dependencies..."
 "$VENV_DIR/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
 
 # Create data directory
-DATA_DIR="${CONTEXT_ENGINE_DIR:-$HOME/.context-engine}"
-TOKEN_FILE="$DATA_DIR/token"
-mkdir -p "$DATA_DIR/collections"
+mkdir -p ~/.context-engine/collections
 
 # Generate auth token if it doesn't exist
-if [ -n "${CONTEXT_ENGINE_TOKEN:-}" ]; then
-    printf '%s\n' "$CONTEXT_ENGINE_TOKEN" > "$TOKEN_FILE"
-    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
-    echo "Using auth token from CONTEXT_ENGINE_TOKEN."
-elif [ ! -s "$TOKEN_FILE" ]; then
+TOKEN_FILE="$HOME/.context-engine/token"
+if [ ! -f "$TOKEN_FILE" ]; then
     echo "Generating auth token..."
     python3 -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"
-    chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+    chmod 600 "$TOKEN_FILE"
     echo "  Token saved to $TOKEN_FILE"
 fi
 
@@ -83,7 +68,7 @@ echo "Test:"
 echo "  curl http://localhost:11811/health"
 echo ""
 echo "Auth token:"
-echo "  cat $TOKEN_FILE"
+echo "  cat ~/.context-engine/token"
 echo "  (paste this into the Chrome extension when prompted)"
 
 echo ""

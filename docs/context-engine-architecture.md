@@ -151,7 +151,6 @@ flowchart TD
   - `CONTEXT_TOP_K`
 - Loads `SentenceTransformer` during FastAPI lifespan startup.
 - Lazily opens or creates zvec collections under `~/.context-engine/collections`.
-- Enforces `X-Context-Token` on collection, add, search, and crawl endpoints; `/health` remains unauthenticated for local liveness checks.
 - Stores each chunk as:
   - `hash`
   - `text`
@@ -159,8 +158,6 @@ flowchart TD
   - `agent`
   - `tags`
   - `ts`
-  - `source_type`
-  - `metadata_json`
   - `embedding`
 - Deduplicates writes by SHA-1 hash of normalized text.
 - Exposes these endpoints:
@@ -184,7 +181,7 @@ flowchart TD
 - Strips navigation, scripts, and other noisy elements before text extraction.
 - Filters discovered links by domain and optional `path_prefix`.
 - Writes progress into the mutable in-memory `task_state` object passed by `server.py`.
-- Receives `chunk_fn` and `add_fn` from `server.py`, which keeps crawl orchestration explicit but still couples ingestion behavior to the API layer.
+- Depends on `server.py` for chunking logic via `from server import chunk_text`, which is a notable coupling point.
 
 ### `mcp_server.py`
 
@@ -218,12 +215,10 @@ flowchart TD
 
 #### `popup.js`
 - Checks server health.
-- Validates and stores the auth token in `chrome.storage.local`.
 - Lists and creates collections.
 - Stores the active collection in `chrome.storage.local`.
 - Adds current page or current selection via `/add`.
 - Starts crawls via `/crawl` and polls task progress.
-- Shows a dedicated YouTube transcript tool that routes popup actions through the background worker.
 
 #### `content.js`
 - Clones the DOM, strips noisy elements, and extracts visible text.
@@ -233,14 +228,12 @@ flowchart TD
 - Creates right-click menu entries.
 - Sends selected text directly to `/add`.
 - Uses `chrome.scripting.executeScript` to extract full-page content for context-menu page capture.
-- Keeps the auth token cache in sync with `chrome.storage.local`.
-- Orchestrates optional YouTube transcript extraction in the service worker before posting normalized transcript context to `/add`.
 
 ## Data model and persistence
 
 ```mermaid
 flowchart LR
-    T[Raw text] --> C[chunk_text size≈400]
+    T[Raw text] --> C[chunk_text size≈2048]
     C --> H[fact_hash SHA-1 prefix]
     C --> E[embedding vector 768-dim fp32]
     H --> D[Doc fields]
@@ -253,10 +246,9 @@ flowchart LR
 - Root data directory: `~/.context-engine/`
 - Collection directory: `~/.context-engine/collections/{collection-name}/`
 - Collection schema:
-  - string fields: `hash`, `text`, `source`, `agent`
+  - string fields: `hash`, `text`, `source`, `agent`, `source_type`, `metadata_json`, `embed_model`
   - array field: `tags`
   - int field: `ts`
-  - string fields: `source_type`, `metadata_json`, `embed_model`
   - vector field: `embedding` (768 dims)
 
 ## Important design characteristics
@@ -271,56 +263,76 @@ flowchart LR
 
 ### Constraints and risks in the current implementation
 
-1. **Config duplication**  
+1. **Open localhost API surface**  
+   `server.py` allows `allow_origins=["*"]`, and the extension talks to mutation endpoints without authentication.
+
+2. **Manifest/implementation mismatch**  
+   `background.js` uses `chrome.scripting.executeScript`, but `extension/manifest.json` does not currently declare the `scripting` permission.
+
+3. **Config duplication**  
    Host/port values are repeated in `server.py`, `mcp_server.py`, `background.js`, `popup.js`, docs, and setup output.
 
-2. **Collection compatibility edge cases**  
-   The server preserves access to pre-existing collection directories, but schema and embedding-model upgrades still require careful migration handling for older local data.
+4. **Loose collection-name validation**  
+   Collection creation normalizes names, but endpoints still accept raw path-like values elsewhere.
 
-3. **Tight module coupling**  
+5. **Tight module coupling**  
    `crawler.py` imports `chunk_text` from `server.py` instead of using a shared utility module.
 
-4. **Ephemeral crawl state**  
+6. **Ephemeral crawl state**  
    `_crawl_tasks` lives in memory only; restarting the server loses crawl progress and status.
 
-5. **Limited automated verification in-repo**  
-   There is now targeted automated coverage for transcript normalization and storage, but the main extension/UI flows still do not have full browser-level end-to-end coverage.
+7. **Limited automated verification in-repo**  
+   The tracked repo does not currently expose a dedicated test suite or lint/typecheck config for the main app code.
 
 ## Suggested improvements
 
 ### Highest priority
 
-1. **Centralize configuration**
+1. **Lock down the local API**
+   - Restrict CORS to trusted origins.
+   - Add a local auth token/header for write endpoints.
+   - Consider separate read/write permissions.
+
+2. **Fix the extension permission contract**
+   - Add `"scripting"` to `extension/manifest.json`.
+   - Validate both context-menu actions end to end.
+
+3. **Centralize configuration**
    - Move host, port, data-dir, model name, and default search size into a shared config module.
    - Reuse that config from server and MCP code.
 
-2. **Expand automated verification**
-   - Add browser-level extension tests for popup auth, collection creation, and crawl status handling.
-   - Add migration tests for legacy embedding dimensions and legacy collection names.
+4. **Harden collection validation**
+   - Enforce a safe canonical regex such as `[a-z0-9-]+`.
+   - Validate collection values consistently for create, delete, add, search, and crawl.
 
 ### Medium priority
 
-3. **Refactor into a package layout**
+5. **Refactor into a package layout**
    - Example split: `config.py`, `storage.py`, `embedding.py`, `api.py`, `crawler.py`, `models.py`.
    - Remove cross-script imports.
 
-4. **Improve crawl job management**
+6. **Add automated tests**
+   - API route tests for add/search/collections/crawl status.
+   - Crawler parsing tests for HTML extraction and link filtering.
+   - `connect.py` config read/write tests.
+
+7. **Improve crawl job management**
    - Persist job state.
    - Add cancel support.
    - Track failures per URL and expose richer progress metadata.
 
-5. **Unify setup guidance**
+8. **Unify setup guidance**
    - Ensure `install.sh`, `README.md`, and `connect.py` output use the correct per-agent config schema.
    - Reduce duplicated manual setup snippets.
 
 ### Lower priority but worthwhile
 
-6. **Crawler politeness and resilience**
+9. **Crawler politeness and resilience**
    - Add retry/backoff.
    - Respect `robots.txt` where appropriate.
    - Dedupe queued URLs more aggressively.
 
-7. **Operational observability**
+10. **Operational observability**
    - Improve structured logging around API calls, crawl tasks, and embedding latency.
    - Return clearer error messages from `mcp_server.py` when the HTTP server is down.
 

@@ -67,6 +67,14 @@ context-engine/
 
 ---
 
+## Planning Docs
+
+- [Architecture overview](docs/context-engine-architecture.md)
+- [Reliability & safety implementation plan](docs/implementation-plan.md)
+- [Decision memo (March 2026): architecture and retrieval strategy](docs/decision-memo-2026-03-architecture.md)
+
+---
+
 ## Setup
 
 ### 1. Install dependencies
